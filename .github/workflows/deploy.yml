@@ -1,0 +1,26 @@
+name: Deploy to Render  # Nombre del workflow
+
+on:
+  push:
+    branches:
+      - main  # Se ejecutará cuando haya cambios en la rama "main"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest  # Máquina virtual en la que se ejecutarán los pasos
+
+    steps:
+    - name: Checkout Code  # Descarga el código del repositorio
+      uses: actions/checkout@v2
+
+    - name: Build Docker Image  # Construye la imagen Docker
+      run: docker build -t disriego/backend-distrito-riego:latest .
+
+    - name: Push Docker Image to Docker Hub  # Subir la imagen a Docker Hub
+      run: |
+        echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+        docker tag disriego/backend-distrito-riego:latest disriego/backend-distrito-riego:${{ github.sha }}
+        docker push disriego/backend-distrito-riego:latest
+
+    - name: Deploy to Render  # Enviar un trigger para que Render haga el despliegue
+      run: curl -X POST https://api.render.com/deploy/srv-cuvspiaj1k6c7389m8k0?key=${{ secrets.RENDER_API_KEY }}
