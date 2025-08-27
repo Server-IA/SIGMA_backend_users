@@ -48,3 +48,9 @@ class UpdateRolePermissions(BaseModel):
 
 class UpdateUserRoles(BaseModel):
     roles: List[int]  # Lista de IDs de los roles que el usuario debe tener
+
+
+class GenericResponse(BaseModel):
+    success: bool
+    message: str
+    
