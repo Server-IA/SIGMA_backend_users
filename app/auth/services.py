@@ -137,20 +137,31 @@ class AuthService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error al crear el token: {str(e)}")
 
-    def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
+    @staticmethod
+    def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(__import__('app.database', fromlist=['get_db']).get_db)) -> dict:
         """
-        Verifica el token JWT y retorna la información del usuario actual.
-        Si el token es inválido, lanza una excepción.
+        Verifica el token JWT, revisa si está revocado y retorna la información del usuario actual.
+        Si el token es inválido o está revocado, lanza una excepción.
         """
         try:
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            return payload
         except JWTError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Credenciales inválidas",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+
+        # Verificar si el token está revocado
+        if db is not None:
+            revoked = db.query(RevokedToken).filter(RevokedToken.token == token).first()
+            if revoked:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token revocado. Por favor, inicia sesión nuevamente.",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+        return payload
 
 class OAuthService:
     """Servicio para gestionar la autenticación con proveedores OAuth"""
