@@ -153,12 +153,9 @@ class AuthService:
             )
 
         # Verificar si el token está revocado
-        print(f"[DEBUG] Revisando token revocado: {token[:30]}... (db: {db is not None})")
         if db is not None:
             revoked = db.query(RevokedToken).filter(RevokedToken.token == token).first()
-            print(f"[DEBUG] Resultado consulta revoked: {revoked}")
             if revoked:
-                print("[DEBUG] Token está revocado, lanzando excepción")
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Token revocado. Por favor, inicia sesión nuevamente.",
