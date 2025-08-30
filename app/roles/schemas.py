@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Any
 
 # Respuesta simplificada con éxito y datos
@@ -20,8 +20,8 @@ class PermissionResponse(PermissionBase):
 
 
 class RoleBase(BaseModel):
-    name: str
-    description: str
+    name: str = Field(..., max_length=20, min_length=3, description="Nombre del rol")
+    description: str = Field(..., max_length=255, min_length=3, description="Descripción del rol")
 
 class RoleCreate(RoleBase):
     permissions: List[int] = []
@@ -48,3 +48,9 @@ class UpdateRolePermissions(BaseModel):
 
 class UpdateUserRoles(BaseModel):
     roles: List[int]  # Lista de IDs de los roles que el usuario debe tener
+
+
+class GenericResponse(BaseModel):
+    success: bool
+    message: str
+    

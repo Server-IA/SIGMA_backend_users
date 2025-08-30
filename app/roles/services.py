@@ -97,6 +97,7 @@ class RoleService:
             self.db.commit()
             self.db.refresh(db_role)
 
+
             admins = self.db.query(User).join(models.user_role_table).join(models.Role).filter(
                 models.Role.name == "Administrador"
             ).all()
@@ -249,24 +250,50 @@ class RoleService:
 
         
     def get_rol(self, role_id):
-        """Obtener detalles de un rol con manejo de errores"""
+        """Obtener detalles de un rol con manejo de errores, incluyendo status_name"""
         try:
-            role = self.db.query(models.Role).filter(models.Role.id == role_id).first()
+            # Traer rol junto con el nombre del estado (status_name)
+            role = (
+                self.db.query(models.Role)
+                .join(models.Vars, models.Role.status == models.Vars.id)
+                .filter(models.Role.id == role_id)
+                .first()
+            )
 
-            # Verifica si el rol fue encontrado
             if not role:
                 raise HTTPException(status_code=404, detail="El rol no fue encontrado")
 
-            # Asegúrate de que el rol tenga una lista vacía de permisos si no tiene permisos asignados
-            if not hasattr(role, "permissions") or role.permissions is None:
-                role.permissions = []
+            # Preparar permisos
+            permissions_list = []
+            if hasattr(role, "permissions") and role.permissions:
+                for perm in role.permissions:
+                    permissions_list.append({
+                        "id": perm.id,
+                        "name": perm.name,
+                        "description": getattr(perm, "description", ""),
+                        "category": getattr(perm, "category", "")
+                    })
 
-            return jsonable_encoder({"success": True, "data": [role]})
+            # Construir objeto final
+            role_data = {
+                "id": role.id,
+                "name": role.name,
+                "description": role.description,
+                "status": role.status,                 
+                "status_name": role.vars.name,   
+                "permissions": permissions_list
+            }
+
+            return {"success": True, "data": [role_data]}
+
         except Exception as e:
-            raise HTTPException(status_code=500, detail={"success": False, "data": {
-                "title" : f"Contacta con el administrador",
-                "message" : str(e),
-            }})
+            raise HTTPException(status_code=500, detail={
+                "success": False,
+                "data": {
+                    "title": "Contacta con el administrador",
+                    "message": str(e)
+                }
+            })
 
     def change_role_status(self, role_id: int, new_status: int):
         """Cambiar el estado de un rol con validación para inhabilitarlo solo si no tiene usuarios asignados"""
@@ -349,6 +376,27 @@ class RoleService:
             self.db.rollback()
             raise HTTPException(status_code=500, detail={"success": False, "data": "Error al actualizar permisos."})
 
+    def delete_role(self, role_id: int):
+        """Eliminar un rol si no está en uso y no es 'Administrador'"""
+        try:
+            role = self.db.query(models.Role).filter(models.Role.id == role_id).first()
+            if not role:
+                raise HTTPException(status_code=404, detail={"success": False, "data": "Rol no encontrado"})
+
+            if role.name.lower() == "administrador":
+                raise HTTPException(status_code=400, detail={"success": False, "data": "No se puede eliminar el rol 'Administrador'"})
+
+            if role.users and len(role.users) > 0:
+                raise HTTPException(status_code=400, detail={"success": False, "data": "No se puede eliminar el rol porque está asignado a usuarios"})
+
+            self.db.delete(role)
+            self.db.commit()
+
+            return {"success": True, "message": "Rol eliminado correctamente"}
+
+        except SQLAlchemyError:
+            self.db.rollback()
+            raise HTTPException(status_code=500, detail={"success": False, "data": "Error al eliminar el rol"})
 
 class UserRoleService:
     """Clase para gestionar la asignación de roles a usuarios"""
@@ -373,36 +421,38 @@ class UserRoleService:
             user.roles.append(role)
             self.db.commit()
             self.db.refresh(user)
+
+            
             return {"success": True, "data": "Rol asignado correctamente"}
         except SQLAlchemyError:
             self.db.rollback()
             raise HTTPException(status_code=500, detail={"success": False, "data": "Error al asignar el rol al usuario."})
     
     def revoke_role_from_user(self, user_id: int, role_id: int):
-      """Revocar un rol de un usuario, asegurando que al menos tenga 1 rol asignado"""
-      try:
-          user = self.db.query(User).filter(User.id == user_id).first()
-          if not user:
-              raise HTTPException(status_code=404, detail={"success": False, "data": "Usuario no encontrado."})
+        """Revocar un rol de un usuario, asegurando que al menos tenga 1 rol asignado"""
+        try:
+            user = self.db.query(User).filter(User.id == user_id).first()
+            if not user:
+                raise HTTPException(status_code=404, detail={"success": False, "data": "Usuario no encontrado."})
 
-          role = self.db.query(models.Role).filter(models.Role.id == role_id).first()
-          if not role:
-              raise HTTPException(status_code=404, detail={"success": False, "data": "Rol no encontrado."})
+            role = self.db.query(models.Role).filter(models.Role.id == role_id).first()
+            if not role:
+                raise HTTPException(status_code=404, detail={"success": False, "data": "Rol no encontrado."})
 
-          if role not in user.roles:
-              raise HTTPException(status_code=400, detail={"success": False, "data": "El usuario no tiene este rol asignado."})
+            if role not in user.roles:
+                raise HTTPException(status_code=400, detail={"success": False, "data": "El usuario no tiene este rol asignado."})
 
-          if len(user.roles) == 1:
-              raise HTTPException(status_code=400, detail={"success": False, "data": "El usuario debe tener al menos un rol asignado."})
+            if len(user.roles) == 1:
+                raise HTTPException(status_code=400, detail={"success": False, "data": "El usuario debe tener al menos un rol asignado."})
 
-          user.roles.remove(role)
-          self.db.commit()
-          self.db.refresh(user)
+            user.roles.remove(role)
+            self.db.commit()
+            self.db.refresh(user)
 
-          return {"success": True, "data": "Rol revocado correctamente"}
-      except SQLAlchemyError:
-          self.db.rollback()
-          raise HTTPException(status_code=500, detail={"success": False, "data": "Error al revocar el rol del usuario."})
+            return {"success": True, "data": "Rol revocado correctamente"}
+        except SQLAlchemyError:
+            self.db.rollback()
+            raise HTTPException(status_code=500, detail={"success": False, "data": "Error al revocar el rol del usuario."})
       
     def update_user_roles(self, user_id: int, new_role_ids: list[int]):
       """Actualizar los roles de un usuario asegurando que al menos tenga 1 rol"""
