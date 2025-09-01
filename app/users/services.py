@@ -664,6 +664,30 @@ class UserService:
             self.db.add(new_activation_token)
             self.db.commit()
 
+            # Enviar correo electrónico de activación SOLO para pre-registro
+            try:
+                email_service = EmailService()
+                user_name = user.name or user.email.split('@')[0]
+                email_sent = email_service.send_pre_register_activation_email(
+                    to_email=email,
+                    activation_token=activation_token,
+                    user_name=user_name
+                )
+                if not email_sent:
+                    self.db.delete(new_activation_token)
+                    self.db.commit()
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Error al enviar el correo de activación. Por favor, intenta nuevamente."
+                    )
+            except Exception as e:
+                self.db.delete(new_activation_token)
+                self.db.commit()
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error al enviar el correo de activación: {str(e)}"
+                )
+
             return PreRegisterResponse(
                 success=True,
                 message="Pre-registro completado con éxito. Se ha enviado un correo de activación a su dirección de email.",
@@ -1041,3 +1065,4 @@ class UserService:
                     "message": str(e),
                 }}
             )
+

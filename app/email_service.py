@@ -283,3 +283,60 @@ class EmailService:
         except Exception as e:
             logger.error(f"Error al enviar correo: {str(e)}")
             return False
+
+    def send_pre_register_activation_email(self, to_email: str, activation_token: str, user_name: str = None) -> bool:
+        """
+        Envía un correo de activación de cuenta SOLO para el endpoint de pre-registro.
+        """
+        base_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        activation_url = f"{base_url}/activate-account/{activation_token}"
+        subject = "Activa tu cuenta en Sigma"
+        body = f"""
+        Hola {user_name or 'Usuario'},
+
+        Gracias por completar tu pre-registro en Sigma.
+        Para activar tu cuenta, haz clic en el siguiente enlace:
+        {activation_url}
+
+        Este enlace expirará en 24 horas.
+        Si no solicitaste este registro, puedes ignorar este correo.
+
+        Saludos,
+        Equipo de Sigma
+        """
+        html_body = f"""
+        <html>
+        <body style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;'>
+            <div style='background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);'>
+                <h2 style='color: #333; margin-bottom: 20px;'>Hola {user_name or 'Usuario'},</h2>
+                <p style='color: #555; line-height: 1.6; margin-bottom: 20px;'>
+                    Gracias por completar tu pre-registro en Sigma. Para activar tu cuenta, haz clic en el siguiente botón:
+                </p>
+                <a href='{activation_url}' style='display: inline-block; padding: 12px 30px; background-color: #007bff; color: white; border-radius: 5px; text-decoration: none; font-weight: bold; margin-bottom: 20px;'>
+                    Activar cuenta
+                </a>
+                <p style='color: #888; font-size: 13px; margin-top: 30px;'>
+                    Este enlace expirará en 24 horas.<br>
+                    Si no solicitaste este registro, puedes ignorar este correo.
+                </p>
+                <p style='color: #333; margin-top: 40px;'>Saludos,<br>Equipo de Sigma</p>
+            </div>
+        </body>
+        </html>
+        """
+        em = EmailMessage()
+        em["From"] = self.sender_email
+        em["To"] = to_email
+        em["Subject"] = subject
+        em.set_content(body)
+        em.add_alternative(html_body, subtype="html")
+        try:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
+                smtp.login(self.sender_email, self.sender_password)
+                smtp.sendmail(self.sender_email, to_email, em.as_string())
+                logger.info(f"Correo de activación de pre-registro enviado a {to_email}")
+                return True
+        except Exception as e:
+            logger.error(f"Error al enviar correo de activación de pre-registro: {str(e)}")
+            return False
