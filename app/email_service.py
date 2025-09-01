@@ -210,6 +210,9 @@ class EmailService:
         """
         Envía correo de bienvenida usando tu estilo
         """
+        # URL base del frontend
+        base_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        
         # Contenido del correo
         subject = "¡Bienvenido a Sigma!"
         body = f"""
@@ -239,11 +242,13 @@ class EmailService:
                 </p>
                 
                 <div style="text-align: center; margin: 30px 0;">
-                    <div style="background-color: #28a745; color: white; padding: 15px 40px; 
-                                border-radius: 8px; font-weight: bold; display: inline-block; 
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.1); min-width: 200px;">
+                    <a href="{base_url}" 
+                       style="background-color: #28a745; color: white; padding: 15px 40px; 
+                              text-decoration: none; border-radius: 8px; font-weight: bold;
+                              display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                              transition: all 0.3s ease; min-width: 200px;">
                         ¡Comenzar Ahora!
-                    </div>
+                    </a>
                 </div>
                 
                 <p style="color: #666; font-size: 14px; margin-bottom: 30px;">
