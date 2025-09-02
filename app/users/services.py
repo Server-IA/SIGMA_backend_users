@@ -22,12 +22,37 @@ from jose import jwt, JWTError
 from fastapi.responses import JSONResponse
 from app.firebase_config import bucket
 from app.email_service import EmailService
+import requests
+from dotenv import load_dotenv
 
+load_dotenv()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 _activation_resend_timestamps = {}
 _RATE_LIMIT_SECONDS = 60
+
+
+def create_user_in_external_app(user_id: int):
+    import os
+    base_url = os.getenv("EXTERNAL_USERS_API_URL")
+    endpoint = "users/"
+    url = base_url.rstrip("/") + "/" + endpoint
+    if not url:
+        print("[ERROR] Variable de entorno EXTERNAL_USERS_API_URL no definida.")
+        return False
+    data = {"id_user": user_id}
+    try:
+        response = requests.post(url, json=data, timeout=5)
+        if response.status_code == 201:
+            print(f"[INFO] Usuario {user_id} creado en sistema externo.")
+            return True
+        else:
+            print(f"[ERROR] Fallo al crear usuario externo: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        print(f"[ERROR] Excepción al crear usuario externo: {str(e)}")
+        return False
 
 
 class UserService:
@@ -890,6 +915,8 @@ class UserService:
             self.db.commit()
             self.db.refresh(db_user)
 
+            # Crear usuario en sistema externo
+            create_user_in_external_app(db_user.id)
             
             notification_data = schemas.NotificationCreate(
                 user_id=admin_id,  
