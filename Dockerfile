@@ -10,6 +10,9 @@ COPY . /app/
 # Instala las dependencias
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Configura PYTHONPATH para que Python pueda encontrar el módulo app
+ENV PYTHONPATH=/app
+
 # Expone el puerto 8000 para FastAPI
 EXPOSE 8001
 
