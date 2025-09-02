@@ -4,7 +4,7 @@ from app.database import get_db
 from app.roles import schemas, services
 from app.roles.models import ChangeRoleStatusRequest
 
-router = APIRouter(prefix="/roles", tags=["Roles"])
+router = APIRouter(tags=["Roles"])
 
 @router.get("/")
 def list_roles(db: Session = Depends(get_db)):

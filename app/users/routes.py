@@ -29,7 +29,7 @@ from app.users.schemas import (
 from app.users.services import UserService
 from app.auth.services import AuthService
 
-router = APIRouter(prefix="/users", tags=["Users"])
+router = APIRouter(tags=["Users"])
 
 ############################################
 # Endpoints para pre-registro y activación #

@@ -12,7 +12,7 @@ from app.roles.models import Role, Permission
 from app.users.models import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/swagger-login")
-router = APIRouter(prefix="/auth", tags=["Auth"])
+router = APIRouter(tags=["Auth"])
 
 
 @router.post("/swagger-login", response_model=Token)

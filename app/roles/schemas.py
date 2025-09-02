@@ -1,6 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Any, Optional
-import unicodedata, re
+from typing import List, Any
 # Respuesta simplificada con éxito y datos
 class SimpleResponse(BaseModel):
     success: bool
@@ -23,18 +22,10 @@ class RoleBase(BaseModel):
     name: str = Field(..., max_length=20, min_length=3, description="Nombre del rol")
     description: str = Field(..., max_length=255, min_length=3, description="Descripción del rol")
     
-    # Normalización del nombre
+    # Normalizar entrada: quitar espacios y forzar lowercase
     @field_validator("name")
-    @classmethod
     def normalize_name(cls, v: str) -> str:
-        # Normaliza Unicode (quita variantes raras)
-        v = unicodedata.normalize("NFKC", v)
-        # Quita espacios inicio/fin
-        v = v.strip()
-        v = re.sub(r"\s+", " ", v)
-        if not v:
-            raise ValueError("El nombre no puede estar vacío")
-        return v
+        return v.strip().casefold()   
     
 class RoleCreate(RoleBase):
     permissions: List[int] = []
