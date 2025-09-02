@@ -23,9 +23,9 @@ setup_middlewares(app)
 setup_exception_handlers(app)
 
 # **Registrar Rutas**
-app.include_router(roles_router)
-app.include_router(users_router)
-app.include_router(auth_router)
+app.include_router(roles_router, prefix="/users/roles")
+app.include_router(users_router, prefix="/users/users")
+app.include_router(auth_router, prefix="/users/auth")
 
 
 
