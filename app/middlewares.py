@@ -30,12 +30,13 @@ def setup_middlewares(app):
     # Protección contra Host Header Attacks
     # app.add_middleware(TrustedHostMiddleware, allowed_hosts=["example.com", "*.example.com", "localhost", "127.0.0.1"])
     frontend_url = os.getenv("FRONTEND_URL", "")
-    allow_origins = [frontend_url] if frontend_url else []
-
+    allow_origins = [o.strip() for o in origins_env.split(",") if o.strip()]
+    
     # Configuración CORS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allow_origins,  # Cambiar a dominios específicos en producción
+        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
