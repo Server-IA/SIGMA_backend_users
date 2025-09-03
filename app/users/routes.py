@@ -211,8 +211,8 @@ def create_user_by_admin(
       - type_document_id, document_number, date_issuance_document,
       - birthday, gender_id, roles.
     """
-    if not current_user.get("rol") or "3" not in [r.get("id") for r in current_user.get("rol", [])]:
-        raise HTTPException(status_code=403, detail="El usuario tiene permisos para crear usuarios")
+    if not current_user.get("permisos") or 3 not in [p.get("id") for p in current_user.get("permisos", [])]:
+        raise HTTPException(status_code=403, detail="El usuario no tiene permisos para crear usuarios")
     try:
         user_service = UserService(db)
         return user_service.create_user_by_admin(
