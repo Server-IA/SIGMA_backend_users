@@ -1,3 +1,4 @@
+import OS
 import time
 import logging
 from fastapi import Request
@@ -28,11 +29,12 @@ def setup_middlewares(app):
 
     # Protección contra Host Header Attacks
     # app.add_middleware(TrustedHostMiddleware, allowed_hosts=["example.com", "*.example.com", "localhost", "127.0.0.1"])
+    allow_origins = os.getenv("ALLOW_ORIGINS")
 
     # Configuración CORS
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Cambiar a dominios específicos en producción
+        allow_origins=allow_origins,  # Cambiar a dominios específicos en producción
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
