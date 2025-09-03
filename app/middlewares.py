@@ -29,7 +29,7 @@ def setup_middlewares(app):
 
     # Protección contra Host Header Attacks
     # app.add_middleware(TrustedHostMiddleware, allowed_hosts=["example.com", "*.example.com", "localhost", "127.0.0.1"])
-    allow_origins = os.getenv("ALLOW_ORIGINS")
+    allow_origins = os.getenv("FRONTEND_URL")
 
     # Configuración CORS
     app.add_middleware(
