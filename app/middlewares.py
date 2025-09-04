@@ -32,8 +32,7 @@ def setup_middlewares(app):
     # Configuración CORS
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Cambiar a dominios específicos en producción
-        allow_credentials=True,
+        allow_origins=["*"],  # Cambiar a dominios específicos en producción        allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
     )
