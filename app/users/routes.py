@@ -29,7 +29,7 @@ from app.users.schemas import (
 from app.users.services import UserService
 from app.auth.services import AuthService
 
-router = APIRouter(prefix="/users", tags=["Users"])
+router = APIRouter(tags=["Users"])
 
 ############################################
 # Endpoints para pre-registro y activación #
@@ -211,7 +211,14 @@ def create_user_by_admin(
       - type_document_id, document_number, date_issuance_document,
       - birthday, gender_id, roles.
     """
-    if not current_user.get("rol") or "Administrador" not in [r.get("name") for r in current_user.get("rol", [])]:
+
+    permisos_usuario = [
+        perm.get("id")
+        for rol in current_user.get("rol", [])
+        for perm in rol.get("permisos", [])
+    ]
+    
+    if not current_user.get("rol") or 3 not in permisos_usuario:
         raise HTTPException(status_code=403, detail="No tiene permisos para crear usuarios")
     try:
         user_service = UserService(db)
@@ -247,7 +254,13 @@ def admin_edit_user(
       - type_document_id, document_number, date_issuance_document,
       - birthday, gender_id y roles.
     """
-    if not current_user.get("rol") or "Administrador" not in [r.get("name") for r in current_user.get("rol", [])]:
+    permisos_usuario = [
+        perm.get("id")
+        for rol in current_user.get("rol", [])
+        for perm in rol.get("permisos", [])
+    ]
+    
+    if not current_user.get("rol") or 4 not in permisos_usuario:
         raise HTTPException(status_code=403, detail="No tiene permisos para editar este usuario")
     try:
         user_service = UserService(db)

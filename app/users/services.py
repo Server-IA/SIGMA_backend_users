@@ -21,12 +21,38 @@ from app.auth.services import SECRET_KEY, ALGORITHM
 from jose import jwt, JWTError
 from fastapi.responses import JSONResponse
 from app.firebase_config import bucket
+from app.email_service import EmailService
+import requests
+from dotenv import load_dotenv
 
+load_dotenv()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 _activation_resend_timestamps = {}
 _RATE_LIMIT_SECONDS = 60
+
+
+def create_user_in_external_app(user_id: int):
+    import os
+    base_url = os.getenv("EXTERNAL_USERS_API_URL")
+    endpoint = "users/"
+    url = base_url.rstrip("/") + "/" + endpoint
+    if not url:
+        print("[ERROR] Variable de entorno EXTERNAL_USERS_API_URL no definida.")
+        return False
+    data = {"id_user": user_id}
+    try:
+        response = requests.post(url, json=data, timeout=5)
+        if response.status_code == 201:
+            print(f"[INFO] Usuario {user_id} creado en sistema externo.")
+            return True
+        else:
+            print(f"[ERROR] Fallo al crear usuario externo: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        print(f"[ERROR] Excepción al crear usuario externo: {str(e)}")
+        return False
 
 
 class UserService:
@@ -57,23 +83,28 @@ class UserService:
         """
         Invalida los tokens de activación previos para el usuario y genera uno nuevo.
         Aplica un limitador de peticiones para evitar abusos (por user id).
+        Envía un correo electrónico con el nuevo token de activación.
         """
+        print(f"[DEBUG] Iniciando reenvío de token de activación para usuario: {user.id}")
         try:
             now = datetime.utcnow()
             last_request = _activation_resend_timestamps.get(user.id)
             if last_request and (now - last_request).total_seconds() < _RATE_LIMIT_SECONDS:
+                print(f"[DEBUG] Rate limit alcanzado para usuario {user.id}")
                 raise HTTPException(
                     status_code=429,
                     detail="Demasiadas peticiones. Por favor, espera un momento antes de solicitar un nuevo código de activación."
                 )
             # Actualiza el timestamp de la última petición para este usuario
             _activation_resend_timestamps[user.id] = now
+            print(f"[DEBUG] Rate limit actualizado para usuario {user.id}")
 
             # Marcar como usados todos los tokens de activación pendientes del usuario
             tokens = self.db.query(ActivationToken).filter(
                 ActivationToken.user_id == user.id,
                 ActivationToken.used == False
             ).all()
+            print(f"[DEBUG] Invalidando {len(tokens)} tokens previos")
             for token_obj in tokens:
                 token_obj.used = True
             self.db.commit()
@@ -81,6 +112,9 @@ class UserService:
             # Generar un nuevo token de activación
             new_activation_token = str(uuid.uuid4())
             expiration = datetime.utcnow() + timedelta(days=7)  # Token válido por 7 días
+            print(f"[DEBUG] Nuevo token generado: {new_activation_token}")
+            print(f"[DEBUG] Expiración: {expiration}")
+            
             token_obj = ActivationToken(
                 token=new_activation_token,
                 user_id=user.id,
@@ -89,12 +123,39 @@ class UserService:
             )
             self.db.add(token_obj)
             self.db.commit()
+            print(f"[DEBUG] Token guardado en base de datos")
 
-            # Aquí puedes incluir la lógica para enviar el correo con el nuevo token
+            # Enviar correo electrónico con el nuevo token
+            print(f"[DEBUG] Iniciando envío de correo de activación")
+            email_service = EmailService()
+            user_name = user.name or user.email.split('@')[0]  # Usar nombre o primera parte del email
+            print(f"[DEBUG] Nombre de usuario para correo: {user_name}")
+            
+            email_sent = email_service.send_account_activation_email(
+                to_email=user.email,
+                activation_token=new_activation_token,
+                user_name=user_name
+            )
+            
+            if not email_sent:
+                print(f"[DEBUG] FALLA en envío de correo - eliminando token")
+                # Si falla el envío del correo, eliminar el token y lanzar error
+                self.db.delete(token_obj)
+                self.db.commit()
+                raise HTTPException(
+                    status_code=500, 
+                    detail="Error al enviar el correo de activación. Por favor, intenta nuevamente."
+                )
 
+            print(f"[DEBUG] Correo de activación enviado exitosamente")
             return new_activation_token
 
+        except HTTPException:
+            # Propagar errores conocidos
+            print(f"[DEBUG] Propagando HTTPException")
+            raise
         except Exception as e:
+            print(f"[DEBUG] Error inesperado: {str(e)}")
             self.db.rollback()
             raise HTTPException(status_code=429, detail=f"Error al reenviar código de activación: {str(e)}")
 
@@ -393,19 +454,59 @@ class UserService:
 
     def generate_reset_token(self, email: str) -> str:
         """
-        Genera un token único para restablecer la contraseña y lo guarda en la BD.
+        Genera un token único para restablecer la contraseña, lo guarda en la BD
+        y envía un correo electrónico con el enlace de reseteo.
         """
-        previous_tokens = self.db.query(PasswordReset).filter(PasswordReset.email == email).all()
-        for token_obj in previous_tokens:
-            self.db.delete(token_obj)
-        self.db.commit()
+        try:
+            # Obtener información del usuario
+            user = self.db.query(User).filter(User.email == email).first()
+            if not user:
+                raise HTTPException(status_code=404, detail="Usuario no encontrado")
+            
+            # Eliminar tokens previos
+            previous_tokens = self.db.query(PasswordReset).filter(PasswordReset.email == email).all()
+            for token_obj in previous_tokens:
+                self.db.delete(token_obj)
+            self.db.commit()
 
-        token = str(uuid.uuid4())
-        expiration_time = datetime.utcnow() + timedelta(hours=1)
-        password_reset = PasswordReset(email=email, token=token, expiration=expiration_time)
-        self.db.add(password_reset)
-        self.db.commit()
-        return token
+            # Generar nuevo token
+            token = str(uuid.uuid4())
+            expiration_time = datetime.utcnow() + timedelta(hours=1)
+            
+            password_reset = PasswordReset(email=email, token=token, expiration=expiration_time)
+            self.db.add(password_reset)
+            self.db.commit()
+            
+            # Enviar correo electrónico
+            email_service = EmailService()
+            user_name = user.name or user.email.split('@')[0]  # Usar nombre o primera parte del email
+            
+            email_sent = email_service.send_password_reset_email(
+                to_email=email,
+                reset_token=token,
+                user_name=user_name
+            )
+            
+            if not email_sent:
+                # Si falla el envío del correo, eliminar el token y lanzar error
+                self.db.delete(password_reset)
+                self.db.commit()
+                raise HTTPException(
+                    status_code=500, 
+                    detail="Error al enviar el correo de reseteo. Por favor, intenta nuevamente."
+                )
+            
+            return token
+            
+        except HTTPException:
+            # Propagar errores conocidos
+            raise
+        except Exception as e:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Error al generar token de reseteo: {str(e)}"
+            )
 
     def update_password(self, token: str, new_password: str):
         """
@@ -588,6 +689,30 @@ class UserService:
             self.db.add(new_activation_token)
             self.db.commit()
 
+            # Enviar correo electrónico de activación SOLO para pre-registro
+            try:
+                email_service = EmailService()
+                user_name = user.name or user.email.split('@')[0]
+                email_sent = email_service.send_pre_register_activation_email(
+                    to_email=email,
+                    activation_token=activation_token,
+                    user_name=user_name
+                )
+                if not email_sent:
+                    self.db.delete(new_activation_token)
+                    self.db.commit()
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Error al enviar el correo de activación. Por favor, intenta nuevamente."
+                    )
+            except Exception as e:
+                self.db.delete(new_activation_token)
+                self.db.commit()
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error al enviar el correo de activación: {str(e)}"
+                )
+
             return PreRegisterResponse(
                 success=True,
                 message="Pre-registro completado con éxito. Se ha enviado un correo de activación a su dirección de email.",
@@ -626,6 +751,30 @@ class UserService:
                 user.email_status = True
 
             self.db.commit()
+
+            self.db.commit()
+
+            # Enviar correo de bienvenida
+            try:
+                print(f"[DEBUG] Iniciando envío de correo de bienvenida")
+                email_service = EmailService()
+                user_name = user.name or user.email.split('@')[0]  # Usar nombre o primera parte del email
+                print(f"[DEBUG] Nombre de usuario para correo de bienvenida: {user_name}")
+                
+                email_sent = email_service.send_welcome_email(
+                    to_email=user.email,
+                    user_name=user_name
+                )
+                
+                if email_sent:
+                    print(f"[DEBUG] Correo de bienvenida enviado exitosamente")
+                else:
+                    print(f"[DEBUG] FALLA en envío de correo de bienvenida")
+                    
+            except Exception as e:
+                # Si falla el envío del correo de bienvenida, no afectar la activación
+                # Solo log del error para debugging
+                print(f"[DEBUG] Error al enviar correo de bienvenida: {str(e)}")
 
             return ActivateAccountResponse(
                 success=True,
@@ -766,6 +915,8 @@ class UserService:
             self.db.commit()
             self.db.refresh(db_user)
 
+            # Crear usuario en sistema externo
+            create_user_in_external_app(db_user.id)
             
             notification_data = schemas.NotificationCreate(
                 user_id=admin_id,  
@@ -941,3 +1092,4 @@ class UserService:
                     "message": str(e),
                 }}
             )
+

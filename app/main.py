@@ -9,10 +9,10 @@ from app.exceptions import setup_exception_handlers
 from app.users.models import ensure_default_genders
 
 # **Configurar FastAPI**
-app = FastAPI( 
-    root_path="/disriego/base",
-    title="Distrito de Riego API Gateway - Gestion de usuario",
-    description="API Gateway para gestión de usuarios, roles y permisos en el sistema de riego",
+app = FastAPI(
+    root_path="/sigma",
+    title="Inmero API - Gestión de Usuarios, Roles y Permisos",
+    description="Microservicio de gestión de usuarios, roles y permisos dentro del sistema de gestión de maquinaria y nómina.",
     version="1.0.0"
 )
 
@@ -23,9 +23,9 @@ setup_middlewares(app)
 setup_exception_handlers(app)
 
 # **Registrar Rutas**
-app.include_router(roles_router)
-app.include_router(users_router)
-app.include_router(auth_router)
+app.include_router(roles_router, prefix="/users/roles")
+app.include_router(users_router, prefix="/users/users")
+app.include_router(auth_router, prefix="/users/auth")
 
 
 

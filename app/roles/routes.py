@@ -4,7 +4,7 @@ from app.database import get_db
 from app.roles import schemas, services
 from app.roles.models import ChangeRoleStatusRequest
 
-router = APIRouter(prefix="/roles", tags=["Roles"])
+router = APIRouter(tags=["Roles"])
 
 @router.get("/")
 def list_roles(db: Session = Depends(get_db)):
@@ -33,6 +33,10 @@ def edit_rol(role_id: int, role: schemas.RoleCreate, db: Session = Depends(get_d
     role_service = services.RoleService(db)
     return role_service.edit_role(role_id, role)
 
+@router.delete("/{role_id}/delete", response_model=schemas.GenericResponse)
+def delete_rol(role_id: int, db: Session = Depends(get_db)):
+    role_service = services.RoleService(db)
+    return role_service.delete_role(role_id)
 
 @router.post("/change-rol-status/")
 def change_role_status(request: ChangeRoleStatusRequest, db: Session = Depends(get_db)):

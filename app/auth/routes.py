@@ -12,7 +12,7 @@ from app.roles.models import Role, Permission
 from app.users.models import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/swagger-login")
-router = APIRouter(prefix="/auth", tags=["Auth"])
+router = APIRouter(tags=["Auth"])
 
 
 @router.post("/swagger-login", response_model=Token)
@@ -133,13 +133,17 @@ def logout(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
 def request_reset_password(reset_request: ResetPasswordRequest, db: Session = Depends(get_db)):
     """
     Solicita el restablecimiento de contraseña: valida el email, inhabilita tokens previos 
-    y genera un token nuevo.
+    y genera un token nuevo que se envía por correo electrónico.
     """
     user_service = UserService(db)
     # Valida que el usuario exista (de lo contrario se lanza error)
     user_service.get_user_by_username(reset_request.email)
+    # Capturar el token retornado
     token = user_service.generate_reset_token(reset_request.email)
-    return ResetPasswordResponse(message="Enlace de restablecimiento generado", token=token)
+    return ResetPasswordResponse(
+        message="Se ha enviado un enlace de restablecimiento a tu correo electrónico", 
+        token=token
+    )
 
 @router.post("/reset-password/{token}", response_model=ResetPasswordResponse)
 def update_password(token: str, update_request: UpdatePasswordRequest, db: Session = Depends(get_db)):
