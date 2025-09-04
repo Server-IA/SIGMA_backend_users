@@ -211,6 +211,7 @@ def create_user_by_admin(
       - type_document_id, document_number, date_issuance_document,
       - birthday, gender_id, roles.
     """
+
     permisos_usuario = [
         perm.get("id")
         for rol in current_user.get("rol", [])
