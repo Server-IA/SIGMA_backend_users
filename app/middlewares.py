@@ -51,7 +51,7 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         elapsed = (time.time() - start) * 1000
         log.info("Response [%s] %s %s %d (%.1fms)",
-                 req_id, request.method, request.url.path, response.status_code, elapsed)
+                req_id, request.method, request.url.path, response.status_code, elapsed)
         return response
 
 
@@ -60,12 +60,11 @@ def setup_middlewares(app):
     # CORS (mantén X-Request-ID permitido)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Cambiar a dominios específicos en producción        allow_credentials=True,
         allow_origins=["*"],            # TODO: restringir en prod
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
-        expose_headers=["X-Request-ID"],   # <— para que el frontend pueda leerlo
+        expose_headers=["X-Request-ID"],   # para que el frontend pueda leerlo
     )
 
     # Orden recomendado: primero contexto, luego logs
