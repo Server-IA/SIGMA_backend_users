@@ -1,189 +1,74 @@
-# DisRiego_Backend
+# Users Sigma Backend
 
-Este repositorio contiene el backend de **DisRiego**. La arquitectura está basada en **Python** y se estructura en microservicios. Este documento guía al equipo desde la instalación del entorno de desarrollo, la ejecución de tests y el despliegue, hasta la integración con Docker y CI/CD.
+Este repositorio contiene el backend de **Users Sigma**. La arquitectura está basada en **Python** y se estructura en microservicios. Este documento guía al equipo desde la organización de ramas hasta el levantamiento del contenedor con Docker.
 
 ---
 
 ## 1. Organización del Repositorio y Ramas
 
-- **Ramas Principales:**
-  - **develop:** Rama de desarrollo activa.
-  - **test:** Rama para integración y pruebas.
-  - **main:** Rama de producción.
+- **Ramas principales:**
+  - **develop:** Desarrollo y Pull Requests.
+  - **main:** Recibe los cambios aprobados desde `develop`.
+  - **test:** El equipo de QA trae cambios desde `main` para ejecutar pruebas.
+  - **dokploy:** Se actualiza tras aprobar pruebas para despliegue/producción.
 
-- **Flujo de Trabajo:**
-  1. Desarrollo en `develop`.
-  2. Una vez estabilizado, se realiza merge a `test` para ejecutar pruebas exhaustivas.
-  3. Finalmente, se fusiona `test` en `main` para el despliegue en producción.
-
----
-
-## 2. Configuración del Entorno Local
-
-### Requisitos
-- [Visual Studio Code](https://code.visualstudio.com/) u otro IDE de preferencia.
-- Python 3 (recomendado virtualenv o pipenv para gestión de entornos).
-- Docker y Docker Compose instalados.
-
-### Pasos
-
-1. **Clonar el repositorio:**
-   ```bash
-   git clone https://github.com/tu-usuario/DisRiego_Backend.git
-   cd DisRiego_Backend
-   ```
-
-2. **Crear y activar el entorno virtual:**
-   ```bash
-   python3 -m venv env
-   source env/bin/activate  # En Windows: env\Scripts\activate
-   ```
-
-3. **Instalar Dependencias:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Configurar Variables de Entorno:**
-   - Copia el archivo `.env.example` a `.env` y ajusta los valores.
-   - Ejemplo:
-     ```dotenv
-     DATABASE_URL=postgres://youruser:yourpassword@db:5432/yourdb
-     FIREBASE_CREDENTIALS='{}'
-     FIREBASE_STORAGE_BUCKET=
-     
-     API_KEY=tu_api_key
-     SECRET_KEY=super_secret_key
-     DB_NAME=db_name
-     DB_USER=db_username
-     DB_PASSWORD=db_password
-     ```
-
-5. **Levantamiento del Entorno con Docker Compose:**
-   - Ejecuta:
-     ```bash
-     docker-compose up
-     ```
-   - Esto levantará el contenedor del backend (microservicios en Python) y un contenedor de PostgreSQL para el desarrollo local.
-
-6. **Ejecución de Tests:**
-   - Ejecuta los tests locales (por ejemplo, usando pytest):
-     ```bash
-     pytest
-     ```
+- **Flujo de trabajo:**
+  1. Desarrollo en **develop** (PRs).
+  2. Aprobación por el líder → merge a **main**.
+  3. QA trae cambios de **main** a **test** y realiza pruebas.
+  4. Si todo OK, se actualiza **dokploy** para despliegue.
 
 ---
 
-## 3. Contenerización con Docker
+## 2. Configurar Variables de Entorno
 
-### Dockerfile
+Copia el archivo `.env.example` a `.env` y ajusta los valores:
 
-Ejemplo de Dockerfile para un microservicio en Python:
-```dockerfile
-# Usa Python 3.11 como imagen base
-FROM python:3.11
+```dotenv
+DATABASE_URL=postgresql://youruser:yourpassword.@machpay_db:5432/usersdb
+FIREBASE_CREDENTIALS='{}'
+FIREBASE_STORAGE_BUCKET=
 
-# Establece el directorio de trabajo dentro del contenedor
-WORKDIR /app
+DB_NAME=youruser
+DB_USER=youruser
+DB_PASSWORD=yourpassword
+DB_HOST=machpay_db
+DB_PORT=5432
 
-# Copia los archivos del backend al contenedor
-COPY . /app/
+EMAIL_SENDER=email_envio_correo
+EMAIL_PASSWORD=password_generada
 
-# Instala las dependencias
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Expone el puerto 8000 para FastAPI
-EXPOSE 8001
-
-# Comando de inicio del backend
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+FRONTEND_URL=http://localhost:3000
+EXTERNAL_USERS_API_URL=http://web:8000/main/
 ```
 
-### Docker Compose
+## 3. Crear la Red de Docker
 
-Archivo `docker-compose.yml` para levantar el backend y PostgreSQL:
-```yaml
-version: "3.8"
+Antes de levantar el contenedor de este proyecto, es necesario crear una red compartida en Docker para permitir la comunicación entre los distintos servicios.  
 
-services:
-  backend:
-    build: .
-    container_name: users_backend
-    command: >
-      sh -c "sleep 10 && uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload"
-    ports:
-      - "8001:8001"
-    depends_on:
-      - db
-    env_file:
-      - .env
+Este paso solo debe ejecutarse una vez en la máquina local:  
 
-  db:
-    image: postgres:15
-    container_name: users_db
-    restart: always
-    environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
-    ports:
-      - "5433:5432"
-    volumes:
-      - users_postgres_data:/var/lib/postgresql/data
-
-volumes:
-  users_postgres_data:
+```bash
+docker network create shared_net
 ```
 
----
+## 4. Levantar el Contenedor
 
-## 4. Integración de CI/CD con GitHub Actions
+El backend de **Users Sigma** depende de los servicios definidos en el proyecto **main**, especialmente la base de datos.  
+Por esta razón, **antes de iniciar este contenedor debes asegurarte de que el proyecto `main` ya esté levantado** con su `docker-compose`.
 
-### Flujo de CI/CD
+Una vez verificado lo anterior, puedes construir e iniciar el servicio de este proyecto con:
 
-- **CI:**  
-  - Se ejecutan tests (por ejemplo, con pytest) en cada push o Pull Request en `develop` y `test`.
-- **CD:**  
-  - Al fusionar en `main`, se despliega automáticamente en Render u otro servicio de hosting para backend.
-
-### Ejemplo de Workflow (archivo `.github/workflows/ci-cd.yml`):
-```yaml
-name: CI/CD Backend
-
-on:
-  push:
-    branches: [develop, test, main]
-  pull_request:
-    branches: [develop, test, main]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Build Docker Image
-        run: docker build -t disriego-backend .
-      - name: Run Tests
-        run: docker run --env-file .env disriego-backend pytest
-
-  deploy:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Deploy to Render
-        run: echo "Desplegando a Render..."
+```bash
+docker-compose up --build
 ```
-
----
 
 ## 5. Consideraciones Finales
 
-- **Variables Sensibles:**  
-  - Utiliza GitHub Secrets y configura las variables en el panel de Render.
-- **Actualización:**  
-  - Este README se actualizará conforme se presenten cambios o imprevistos.
-- **Soporte:**  
-  - Para dudas, abre un issue en el repositorio o contacta al líder del equipo.
-
-¡Manos a la obra con el backend de DisRiego!
+- Todo el desarrollo y ejecución de este backend se realiza dentro de **Docker**, por lo que **no es necesario configurar entornos virtuales locales**.  
+- Antes de levantar este contenedor, valida siempre que:
+  - La red **shared_net** esté creada.
+  - El proyecto **main** se encuentre corriendo, ya que provee los servicios base (como la base de datos).  
+- Si realizas cambios frecuentes en el código, es recomendable usar:
+  ```bash
+  docker-compose up --build

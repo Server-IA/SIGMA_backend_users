@@ -260,7 +260,7 @@ def admin_edit_user(
         for perm in rol.get("permisos", [])
     ]
     
-    if not current_user.get("rol") or 3 not in permisos_usuario:
+    if not current_user.get("rol") or 4 not in permisos_usuario:
         raise HTTPException(status_code=403, detail="No tiene permisos para editar este usuario")
     try:
         user_service = UserService(db)
