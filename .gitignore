@@ -1,13 +1,19 @@
+# === Python ===
 venv/
-
 __pycache__/
-
-app/__pycache__
-app/roles/__pycache__
+app/__pycache__/
+app/roles/__pycache__/
 env
 uploads
 .pytest_cache/
 
+# === Entornos ===
 /.env
 .env
+
+# === Node.js ===
+node_modules/
+package-lock.json
+
+
 
