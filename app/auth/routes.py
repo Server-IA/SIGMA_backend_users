@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session , joinedload
 from datetime import datetime
@@ -10,6 +10,11 @@ from app.users.schemas import UserLogin, Token
 from app.users.services import UserService
 from app.roles.models import Role, Permission 
 from app.users.models import User
+
+# Auditoría
+from audit_sdk import AuditClient
+from app.auth.audit_helpers import mask_email, build_login_meta
+import logging
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/swagger-login")
 router = APIRouter(tags=["Auth"])
@@ -58,59 +63,107 @@ def swagger_login(
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/login/", response_model=Token)
-def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
+def login(user_credentials: UserLogin, request: Request, db: Session = Depends(get_db)):
     auth_service = AuthService(db)
-    
 
-    user = auth_service.authenticate_user(user_credentials.email, user_credentials.password)
-    if not user:
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
-    
+    # Contexto para auditoría
+    result = "failed"                 
+    reason = "invalid_credentials"    
+    actor_id = None                   
+    object_id = None                  
+    username_hint = mask_email(user_credentials.email)
+    status_denied = None              
 
-    if not user.email_status:
-        user_service = UserService(db)
-        new_token = user_service.resend_activation_token(user)
-        raise HTTPException(
-            status_code=401, 
-            detail={"status": "false", "message": "Cuenta no activada. Se ha reenviado el código de activación a su correo.", "token": new_token}
+    try:
+        user = auth_service.authenticate_user(user_credentials.email, user_credentials.password)
+        if not user:
+            # sigue result="failed", reason="invalid_credentials"
+            raise HTTPException(status_code=401, detail="Credenciales inválidas")
+
+        object_id = str(user.id)      
+        actor_id = object_id          
+
+        if not user.email_status:
+            result = "denied"
+            reason = "email_not_verified"
+            user_service = UserService(db)
+            new_token = user_service.resend_activation_token(user)
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "status": "false",
+                    "message": "Cuenta no activada. Se ha reenviado el código de activación a su correo.",
+                    "token": new_token
+                }
+            )
+
+        if user.status_id != 1:
+            result = "denied"
+            reason = "inactive_or_blocked"
+            status_denied = user.status_id
+            raise HTTPException(status_code=401, detail="Cuenta inactiva o bloqueada. No se permite el acceso.")
+
+        # ---- Éxito: construir token y responder ----
+        user = (
+            db.query(User)
+            .options(joinedload(User.roles).joinedload(Role.permissions))
+            .filter(User.email == user.email)
+            .first()
         )
-    
 
-    if user.status_id != 1:
-        raise HTTPException(
-            status_code=401, 
-            detail="Cuenta inactiva o bloqueada. No se permite el acceso."
-        )
-    
+        roles = []
+        for role in user.roles:
+            role_data = {"id": role.id, "name": role.name}
+            permisos = [{"id": perm.id, "name": perm.name} for perm in role.permissions]
+            role_data["permisos"] = permisos
+            roles.append(role_data)
 
-    user = (
-        db.query(User)
-        .options(joinedload(User.roles).joinedload(Role.permissions))
-        .filter(User.email == user.email)
-        .first()
-    )
-    
-    roles = []
-    for role in user.roles:
-        role_data = {"id": role.id, "name": role.name}
-        permisos = [{"id": perm.id, "name": perm.name} for perm in role.permissions]
-        role_data["permisos"] = permisos
-        roles.append(role_data)
-    
-    token_data = {
-        "sub": user.email,
-        "id": user.id,
-        "name": user.name,
-        "email": user.email,
-        "status_date": datetime.utcnow().isoformat(),
-        "rol": roles,
-        "status": user.status_id,
-        "birthday": user.birthday.isoformat() if user.birthday else None,
-        "first_login_complete": user.first_login_complete
-    }
-    
-    access_token = auth_service.create_access_token(data=token_data)
-    return {"access_token": access_token, "token_type": "bearer"}
+        token_data = {
+            "sub": user.email,
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "status_date": datetime.utcnow().isoformat(),
+            "rol": roles,
+            "status": user.status_id,
+            "birthday": user.birthday.isoformat() if user.birthday else None,
+            "first_login_complete": user.first_login_complete
+        }
+
+        access_token = auth_service.create_access_token(data=token_data)
+
+        
+        result = "success"
+        reason = None
+
+        return {"access_token": access_token, "token_type": "bearer"}
+
+    except HTTPException:
+        raise
+
+    finally:
+        try:
+            meta = {
+                "result": result,
+                "source": "auth.login",   
+            }
+            if reason:
+                meta["reason"] = reason
+            if username_hint:
+                meta["username_hint"] = username_hint
+            if status_denied is not None:
+                meta["status_id"] = status_denied
+
+            AuditClient(request).emit(
+                operation="ACCESS",
+                module="gestion_usuarios",
+                object_type="user",
+                object_id=object_id,    
+                actor_id=actor_id if result == "success" else None, 
+                meta=meta,
+            )
+        except Exception as e:
+            logging.warning(f"No se pudo auditar el intento de login: {e}")
 
 
 @router.post("/logout")
@@ -146,12 +199,12 @@ def request_reset_password(reset_request: ResetPasswordRequest, db: Session = De
     )
 
 @router.post("/reset-password/{token}", response_model=ResetPasswordResponse)
-def update_password(token: str, update_request: UpdatePasswordRequest, db: Session = Depends(get_db)):
+def update_password(token: str, update_request: UpdatePasswordRequest, request: Request, db: Session = Depends(get_db)):
     """
     Actualiza la contraseña utilizando el token de restablecimiento.
     """
     user_service = UserService(db)
-    user_service.update_password(token, update_request.new_password)
+    user_service.update_password(token, update_request.new_password, request=request)
     return ResetPasswordResponse(message="Contraseña actualizada correctamente", token=token)
 
 @router.post("/oauth/login", response_model=dict)

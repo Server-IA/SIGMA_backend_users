@@ -8,6 +8,9 @@ from app.middlewares import setup_middlewares
 from app.exceptions import setup_exception_handlers
 from app.users.models import ensure_default_genders
 
+# Auditoría
+from audit_sdk.context_fastapi import AuditContextMiddleware
+
 # **Configurar FastAPI**
 app = FastAPI(
     root_path="/sigma",

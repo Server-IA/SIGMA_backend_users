@@ -4,7 +4,7 @@ import smtplib
 from email.message import EmailMessage
 from datetime import datetime, timedelta, date
 from typing import List, Optional
-from fastapi import HTTPException, Depends, status, UploadFile
+from fastapi import HTTPException, Depends, status, UploadFile, Request
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import SQLAlchemyError
@@ -25,8 +25,12 @@ from app.email_service import EmailService
 import requests
 from dotenv import load_dotenv
 
-load_dotenv()
+# Auditoría (SDK)
+from audit_sdk import AuditClient
+from app.users.audit_helpers import user_snapshot, prereg_attempt_meta
+import logging
 
+load_dotenv()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 _activation_resend_timestamps = {}
@@ -309,7 +313,7 @@ class UserService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Contacta con el administrador: {str(e)}")
 
-    def update_user(self, user_id: int, admin_update: bool = False, **kwargs):
+    def update_user(self, user_id: int, admin_update: bool = False, request: Request = None, admin_id: int = None, **kwargs):
         """Actualiza los detalles de un usuario y, si admin_update es True, envía una notificación."""
         try:
             db_user = self.db.query(User).filter(User.id == user_id).first()
@@ -318,12 +322,32 @@ class UserService:
 
             if "document_number" in kwargs:
                 self.validate_unique_document(kwargs["document_number"], exclude_user_id=user_id)
+            before = user_snapshot(db_user)
 
             for key, value in kwargs.items():
                 setattr(db_user, key, value)
             self.db.commit()
             self.db.refresh(db_user)
             
+            after = user_snapshot(db_user)
+
+            # Auditoría
+            try:
+                AuditClient(request).update(
+                    module="gestion_usuarios",
+                    object_type="user",
+                    object_id=str(db_user.id),
+                    actor_id=str(admin_id) if admin_id else None,
+                    before=before,
+                    after=after,
+                    meta={
+                        "source": "users.update_user",
+                        "admin_update": bool(admin_update),
+                    },
+                )
+            except Exception as e:
+                logging.warning(f"No se pudo emitir auditoría en update_user: {e}")
+
             if admin_update:
                 # Registro para ver que se dispara la notificación
                 print(f"[DEBUG] Creando notificación para el usuario {user_id}.")
@@ -424,7 +448,7 @@ class UserService:
                 }
             })
 
-    def change_user_status(self, user_id: int, new_status: int):
+    def change_user_status(self, user_id: int, new_status: int, request: Request, actor_id: int | None = None):
         try:
             user = self.db.query(User).filter(User.id == user_id).first()
             if not user:
@@ -434,9 +458,30 @@ class UserService:
             if not status_obj:
                 raise HTTPException(status_code=400, detail="Estado no válido.")
 
+            before = user.snapshot(user)
+
             user.status_id = new_status
             self.db.commit()
             self.db.refresh(user)
+
+            after = user.snapshot(user)
+
+            # Auditoría
+            try:
+                AuditClient(request).update(
+                    module="gestion_usuarios",
+                    object_type="user_status",
+                    object_id=str(user.id),
+                    actor_id=str(actor_id) if actor_id else None,
+                    before=before,
+                    after=after,
+                    meta={
+                        "source": "users.change_user_status",
+                        "new_status": new_status
+                    },
+                )
+            except Exception as e:
+                logging.warning(f"No se pudo emitir auditoría en change_user_status: {e}")
 
             # Verificar si el nuevo estado representa una inhabilitación; en este ejemplo, usamos new_status == 0.
             if new_status == 0:
@@ -528,43 +573,110 @@ class UserService:
                 detail=f"Error al generar token de reseteo: {str(e)}"
             )
 
-    def update_password(self, token: str, new_password: str):
+    def update_password(self, token: str, new_password: str, request: Request) -> dict:
         """
-        Actualiza la contraseña del usuario utilizando el token de restablecimiento y genera una notificación.
+        Actualiza la contraseña con un token de restablecimiento y genera auditoría
+        (registra tanto éxitos como fallos).
         """
-        password_reset = self.db.query(PasswordReset).filter(PasswordReset.token == token).first()
-        if not password_reset:
-            raise HTTPException(status_code=404, detail="Token inválido o expirado")
-        if password_reset.expiration < datetime.utcnow():
-            raise HTTPException(status_code=400, detail="El token ha expirado")
+        result = "failed"              # success | failed
+        reason = "invalid_or_expired_token"
+        object_id = None               # se llenará cuando identifiquemos al usuario
+        token_hint = f"{token[:8]}…" if token else None
 
-        user = self.db.query(User).filter(User.email == password_reset.email).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        try:
+            password_reset = (
+                self.db.query(PasswordReset)
+                .filter(PasswordReset.token == token)
+                .first()
+            )
+            if not password_reset:
+                raise HTTPException(status_code=404, detail="Token inválido o expirado")
 
-        # Actualizar contraseña
-        new_salt, new_hash = self.hash_password(new_password)
-        user.password = new_hash
-        user.password_salt = new_salt
-        self.db.commit()
-        
-        # Eliminar el token usado
-        self.db.delete(password_reset)
-        self.db.commit()
+            if password_reset.expiration < datetime.utcnow():
+                reason = "token_expired"
+                raise HTTPException(status_code=400, detail="El token ha expirado")
 
-        
-        notification_data = schemas.NotificationCreate(
-            user_id=user.id,
-            title="Cambio de contraseña",
-            message="Tu contraseña ha sido actualizada correctamente. Si no realizaste este cambio, contacta con soporte.",
-            type="security"
-        )
-        self.create_notification(notification_data)
+            user = self.db.query(User).filter(User.email == password_reset.email).first()
+            if not user:
+                reason = "user_not_found"
+                raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-        return {"message": "Contraseña actualizada correctamente"}
+            object_id = str(user.id)
+            before = user_snapshot(user)
+
+            # Actualizar contraseña
+            new_salt, new_hash = self.hash_password(new_password)
+            user.password = new_hash
+            user.password_salt = new_salt
+
+            # Eliminar el token usado y persistir cambios
+            self.db.delete(password_reset)
+            self.db.commit()
+            self.db.refresh(user)
+
+            after = user_snapshot(user)
+
+            # Auditoría de éxito 
+            try:
+                AuditClient(request).update(
+                    module="auth",
+                    object_type="user_password",
+                    object_id=object_id,
+                    actor_id=object_id,  
+                    before=before,
+                    after=after,
+                    meta={"source": "users.update_password_token", "flow": "password_reset_token", "result": "success"}
+                )
+            except Exception as e:
+                logging.warning(f"No se pudo emitir auditoría en update_password (éxito): {e}")
+
+            # Notificación
+            notification_data = schemas.NotificationCreate(
+                user_id=user.id,
+                title="Cambio de contraseña",
+                message="Tu contraseña ha sido actualizada correctamente. Si no realizaste este cambio, contacta con soporte.",
+                type="security"
+            )
+            self.create_notification(notification_data)
+
+            result = "success"
+            reason = None
+            return {"success": True, "data": "Contraseña actualizada correctamente"}
+
+        except HTTPException:
+            raise
+
+        except Exception as e:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail={"success": False, "data": {
+                    "title": "Error al actualizar la contraseña",
+                    "message": str(e),
+                }}
+            )
+
+        finally:
+            # Auditoría 
+            if result != "success":
+                try:
+                    meta = {"result": result, "flow": "password_reset_token"}
+                    if reason: meta["reason"] = reason
+                    if token_hint: meta["token_hint"] = token_hint
+
+                    AuditClient(request).emit(
+                        operation="UPDATE",           
+                        module="auth",
+                        object_type="user_password",
+                        object_id=object_id,        
+                        actor_id=None,                 
+                        meta=meta,
+                    )
+                except Exception as e:
+                    logging.warning(f"No se pudo emitir auditoría en update_password (fallo): {e}")
 
 
-    def change_user_password(self, user_id: int, password_data: ChangePasswordRequest):
+    def change_user_password(self, user_id: int, password_data: ChangePasswordRequest, request: Request, actor_id: int | None = None):
         """
         Actualiza la contraseña de un usuario verificando la contraseña actual
         y genera una notificación de tipo 'security'.
@@ -586,12 +698,30 @@ class UserService:
             if not self.verify_password(user.password_salt, user.password, password_data.old_password):
                 raise HTTPException(status_code=400, detail="La contraseña actual es incorrecta")
 
+            before = user_snapshot(user)
+
             # 4. Hashear y guardar nueva contraseña
             new_salt, new_hash = self.hash_password(password_data.new_password)
             user.password = new_hash
             user.password_salt = new_salt
             self.db.commit()
 
+            after = user_snapshot(user)
+
+            # 4. Auditoría 
+            try:
+                AuditClient(request).update(
+                    module="gestion_usuarios",
+                    object_type="user",
+                    object_id=str(user.id),
+                    actor_id=str(actor_id) if actor_id else None,
+                    before=before,
+                    after=after,
+                    meta={"source": "users.change_user_password", "result": "success"}
+                )
+            except Exception as e:
+                logging.warning(f"No se pudo emitir auditoría en cambio de contraseña: {e}")
+                
             # 5. Crear notificación
             notification_data = NotificationCreate(
                 user_id=user.id,
@@ -620,39 +750,83 @@ class UserService:
             )
 
 
-    async def validate_for_pre_register(self, document_type_id: int, document_number: str, 
-                                        date_issuance_document: datetime) -> PreRegisterResponse:
+    async def validate_for_pre_register(
+        self,
+        document_type_id: int,
+        document_number: str,
+        date_issuance_document: datetime,   # si tu schema manda "date", puedes usar date en vez de datetime
+        request: Request
+    ) -> PreRegisterResponse:
         try:
             doc_number_int = int(document_number)
-            user = self.db.query(User).filter(
-                User.document_number == doc_number_int,
-                User.type_document_id == document_type_id
-            ).first()
+
+            user = (
+                self.db.query(User)
+                .filter(
+                    User.document_number == doc_number_int,
+                    User.type_document_id == document_type_id,
+                )
+                .first()
+            )
             if not user:
                 raise HTTPException(status_code=404, detail="No existe un usuario con estos datos en el sistema.")
+
+            # Si tu parámetro es date puro, compara como date:
+            # if user.date_issuance_document.date() != date_issuance_document:
+            #     ...
+            # Si ya recibes datetime, deja como está:
             if user.date_issuance_document.date() != date_issuance_document:
                 raise HTTPException(status_code=400, detail="La fecha de expedición no coincide con nuestros registros.")
-            if user.status_id == 1:
-                raise HTTPException(status_code=400, detail="Este usuario ya ha realizado su pre-registro. Por favor inicie sesión o use la opción de recuperar contraseña.")
-            if user.email:
-                raise HTTPException(status_code=400, detail="Este usuario ya tiene un correo electrónico registrado. Por favor inicie sesión o use la opción de recuperar contraseña.")
 
+            if user.status_id == 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Este usuario ya ha realizado su pre-registro. Por favor inicie sesión o use la opción de recuperar contraseña."
+                )
+
+            if user.email:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Este usuario ya tiene un correo electrónico registrado. Por favor inicie sesión o use la opción de recuperar contraseña."
+                )
+
+            # Generar token y guardar
             token = str(uuid.uuid4())
             expiration = datetime.utcnow() + timedelta(hours=24)
+
             pre_register_token = PreRegisterToken(
                 token=token,
                 user_id=user.id,
                 expires_at=expiration,
-                used=False
+                used=False,
             )
-
             self.db.add(pre_register_token)
             self.db.commit()
+
+            # Auditoría (después del commit; no debe romper el flujo)
+            try:
+                AuditClient(request).create(
+                    module="gestion_usuarios",
+                    object_type="pre_register",
+                    object_id=str(user.id),
+                    after={
+                        "user_id": user.id,
+                        "token_hint": f"{token[:8]}…",
+                        "expires_at": expiration.isoformat() + "Z",  # ISO+Z
+                    },
+                    meta={
+                        "source": "users.validate_for_pre_register",
+                        "document_type_id": document_type_id,
+                        "doc_last4": str(doc_number_int)[-4:]
+                    },
+                )
+            except Exception as e:
+                logging.warning(f"No se pudo emitir auditoría en validate_for_pre_register: {e}")
 
             return PreRegisterResponse(
                 success=True,
                 message="Validación exitosa. Complete su registro con email y contraseña.",
-                token=token
+                token=token,
             )
 
         except HTTPException as e:
@@ -668,7 +842,7 @@ class UserService:
             self.db.rollback()
             raise HTTPException(status_code=500, detail=f"Error inesperado: {str(e)}")
 
-    async def complete_pre_register(self, token: str, email: str, password: str) -> PreRegisterResponse:
+    async def complete_pre_register(self, token: str, email: str, password: str, request: Request) -> PreRegisterResponse:
         try:
             pre_register_token = self.db.query(PreRegisterToken).filter(
                 PreRegisterToken.token == token,
@@ -691,6 +865,8 @@ class UserService:
             if existing_email:
                 raise HTTPException(status_code=400, detail="Este correo electrónico ya está registrado. Por favor utilice otro.")
 
+            before = user_snapshot(user)
+
             salt, hash_password = self.hash_password(password)
             user.email = email
             user.password = hash_password
@@ -711,6 +887,27 @@ class UserService:
 
             self.db.add(new_activation_token)
             self.db.commit()
+
+            # Auditoría
+            try:
+                after = user_snapshot(user)
+                AuditClient(request).update(
+                    module="gestion_usuarios",
+                    object_type="user",
+                    object_id=str(user.id),
+                    before=before,
+                    after=after,
+                    actor_id=None,  
+                    meta={
+                        "source": "users.complete_pre_register",
+                        "token_hint": f"{token[:8]}…",
+                        "email_domain": email.split("@")[-1] if "@" in email else None,
+                    },
+                )
+            except Exception as e:
+                logging.warning(
+                    f"No se pudo emitir auditoría en complete_pre_register: {e}"
+                )
 
             # Enviar correo electrónico de activación SOLO para pre-registro
             try:
@@ -752,7 +949,7 @@ class UserService:
             self.db.rollback()
             raise HTTPException(status_code=500, detail=f"Error inesperado: {str(e)}")
 
-    async def activate_account(self, activation_token: str) -> ActivateAccountResponse:
+    async def activate_account(self, activation_token: str, request: Request) -> ActivateAccountResponse:
         try:
             token_obj = self.db.query(ActivationToken).filter(
                 ActivationToken.token == activation_token,
@@ -762,6 +959,8 @@ class UserService:
 
             if not token_obj:
                 raise HTTPException(status_code=400, detail="Token de activación inválido o expirado. Por favor, solicite uno nuevo.")
+
+            before = user_snapshot(user)
 
             user = self.db.query(User).filter(User.id == token_obj.user_id).first()
 
@@ -775,8 +974,21 @@ class UserService:
 
             self.db.commit()
 
-            self.db.commit()
+            self.db.refresh(user)
 
+            # Auditoría 
+            try:
+                AuditClient(request).update(
+                    module="auth",
+                    object_type="user",
+                    object_id=str(user.id),
+                    actor_id=str(user.id),  # activación self-service
+                    before=before,
+                    after=user_snapshot(user),
+                    meta={"source": "users.activate_account"}
+                )
+            except Exception as e:
+                logging.warning(f"No se pudo emitir auditoría en activate_account: {e}")
             # Enviar correo de bienvenida
             try:
                 print(f"[DEBUG] Iniciando envío de correo de bienvenida")
@@ -876,7 +1088,8 @@ class UserService:
         city: Optional[int] = None,
         address: Optional[str] = None,
         phone: Optional[str] = None,
-        profile_picture: Optional[str] = None
+        profile_picture: Optional[str] = None,
+        request: Request = None
     ) -> dict:
         """
         Actualiza la información básica del perfil del usuario.
@@ -885,6 +1098,8 @@ class UserService:
             user = self.db.query(User).filter(User.id == user_id).first()
             if not user:
                 raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+            before = user_snapshot(user)
 
             if country is not None:
                 user.country = country
@@ -902,6 +1117,22 @@ class UserService:
             self.db.commit()
             self.db.refresh(user)
 
+            after = user_snapshot(user)
+
+            # auditoría (no debe romper el flujo)
+            try:
+                AuditClient(request).update(
+                    module="gestion_usuarios",
+                    object_type="user",
+                    object_id=str(user.id),
+                    actor_id=str(user_id),
+                    before=before,
+                    after=after,
+                    meta={"source": "users.update_basic_profile"},
+                )
+            except Exception as e:
+                logging.warning(f"No se pudo emitir auditoría en update_basic_profile: {e}")
+
             return {
                 "success": True,
                 "data": {
@@ -918,7 +1149,7 @@ class UserService:
 
     def create_user_by_admin(self, name: str, first_last_name: str, second_last_name: str, 
                             type_document_id: int, document_number: str, date_issuance_document: datetime,
-                            birthday: datetime, gender_id: int, roles: List[int], admin_id: int):
+                            birthday: datetime, gender_id: int, roles: List[int], admin_id: int, request: Request):
         try:
             # Se crea el usuario según los parámetros
 
@@ -933,7 +1164,7 @@ class UserService:
                 date_issuance_document=date_issuance_document,
                 birthday=birthday,
                 gender_id=gender_id,
-                status_id=4  # Estado "Activo" para nuevos usuarios
+                status_id=4, # Estado "Activo" para nuevos usuarios
             )
 
             if roles:
@@ -947,6 +1178,19 @@ class UserService:
             # Crear usuario en sistema externo
             create_user_in_external_app(db_user.id)
             
+            # Auditoría 
+            try:
+                AuditClient(request).create(
+                    module="gestion_usuarios",
+                    object_type="user",
+                    object_id=str(db_user.id),
+                    actor_id=str(admin_id) if admin_id else None,  
+                    after=user_snapshot(db_user),
+                    meta={"source": "users.create_user_by_admin"},
+                )
+            except Exception as e:
+                logging.warning(f"No se pudo emitir auditoría en create_user_by_admin: {e}")
+
             notification_data = schemas.NotificationCreate(
                 user_id=admin_id,  
                 title="Nuevo usuario creado",
