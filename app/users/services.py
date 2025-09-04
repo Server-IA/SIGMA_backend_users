@@ -337,6 +337,8 @@ class UserService:
                     module="gestion_usuarios",
                     object_type="user",
                     object_id=str(db_user.id),
+                    submodule="users",
+                    feature="update_user",
                     actor_id=str(admin_id) if admin_id else None,
                     before=before,
                     after=after,
@@ -472,6 +474,8 @@ class UserService:
                     module="gestion_usuarios",
                     object_type="user_status",
                     object_id=str(user.id),
+                    submodule="users",
+                    feature="change_user_status",
                     actor_id=str(actor_id) if actor_id else None,
                     before=before,
                     after=after,
@@ -616,12 +620,14 @@ class UserService:
 
             after = user_snapshot(user)
 
-            # Auditoría de éxito 
+            # Auditoría
             try:
                 AuditClient(request).update(
                     module="auth",
                     object_type="user_password",
                     object_id=object_id,
+                    submodule="users",
+                    feature="update_password_token",
                     actor_id=object_id,  
                     before=before,
                     after=after,
@@ -668,7 +674,9 @@ class UserService:
                         operation="UPDATE",           
                         module="auth",
                         object_type="user_password",
-                        object_id=object_id,        
+                        object_id=object_id,       
+                        submodule="users",
+                        feature="update_password_token", 
                         actor_id=None,                 
                         meta=meta,
                     )
@@ -708,12 +716,14 @@ class UserService:
 
             after = user_snapshot(user)
 
-            # 4. Auditoría 
+            # Auditoría 
             try:
                 AuditClient(request).update(
                     module="gestion_usuarios",
                     object_type="user",
                     object_id=str(user.id),
+                    submodule="users",
+                    feature="change_user_password",
                     actor_id=str(actor_id) if actor_id else None,
                     before=before,
                     after=after,
@@ -803,12 +813,14 @@ class UserService:
             self.db.add(pre_register_token)
             self.db.commit()
 
-            # Auditoría (después del commit; no debe romper el flujo)
+            # Auditoría 
             try:
                 AuditClient(request).create(
                     module="gestion_usuarios",
                     object_type="pre_register",
                     object_id=str(user.id),
+                    submodule="users",
+                    feature="validate_for_pre_register",
                     after={
                         "user_id": user.id,
                         "token_hint": f"{token[:8]}…",
@@ -894,6 +906,8 @@ class UserService:
                 AuditClient(request).update(
                     module="gestion_usuarios",
                     object_type="user",
+                    submodule="users",
+                    feature="complete_pre_register",
                     object_id=str(user.id),
                     before=before,
                     after=after,
@@ -982,6 +996,8 @@ class UserService:
                     module="auth",
                     object_type="user",
                     object_id=str(user.id),
+                    submodule="users",
+                    feature="activate_account",
                     actor_id=str(user.id),  # activación self-service
                     before=before,
                     after=user_snapshot(user),
@@ -1125,6 +1141,8 @@ class UserService:
                     module="gestion_usuarios",
                     object_type="user",
                     object_id=str(user.id),
+                    submodule="users",
+                    feature="update_basic_profile",
                     actor_id=str(user_id),
                     before=before,
                     after=after,
@@ -1184,6 +1202,8 @@ class UserService:
                     module="gestion_usuarios",
                     object_type="user",
                     object_id=str(db_user.id),
+                    submodule="users",
+                    feature="create_user_by_admin",
                     actor_id=str(admin_id) if admin_id else None,  
                     after=user_snapshot(db_user),
                     meta={"source": "users.create_user_by_admin"},

@@ -105,7 +105,7 @@ def delete_rol(role_id: int, request: Request, db: Session = Depends(get_db)):
 
 @router.post("/change-rol-status/")
 def change_role_status(
-    payload: schemas.ChangeRoleStatusRequest,   
+    payload: schemas.ChangeRoleStatusRequest,
     request: Request,                           # auditoría
     db: Session = Depends(get_db),
     current_user: dict = Depends(AuthService.get_current_user),

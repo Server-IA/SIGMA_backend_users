@@ -8,7 +8,8 @@ from app.users.models import User
 from app.users.schemas import NotificationCreate
 from app.users.services import UserService
 import unicodedata, re
-# Para auditoría
+
+# Auditoría
 from audit_sdk import AuditClient
 from app.roles.audit_helpers import role_snapshot, user_roles_snapshot, permission_snapshot
 import logging
@@ -44,12 +45,14 @@ class PermissionService:
             self.db.commit()
             self.db.refresh(db_permission)
 
-            # Auditoría (si falla, solo aviso en logs)
+            # Auditoría
             try:
                 AuditClient(request).create(
                     module="gestion_usuarios",
                     object_type="permission",
                     object_id=str(db_permission.id),
+                    submodule="permissions",
+                    feature="create",
                     after=permission_snapshot(db_permission),
                     # actor_id=current_user_id  # (cuando tengas autenticación real)
                     meta={"origen": "permissions.create_permission"},
@@ -135,14 +138,16 @@ class RoleService:
             self.db.commit()
             self.db.refresh(db_role)
 
-            # 5) Auditoría (no rompe si falla)
+            # Auditoría
             try:
                 AuditClient(request).create(
                     module="gestion_usuarios",
                     object_type="role",
                     object_id=str(db_role.id),
-                    after=role_snapshot(db_role),   # 👈 usamos el helper
-                    # actor_id=current_user_id (cuando lo tengas)
+                    submodule="roles",
+                    feature="create",
+                    after=role_snapshot(db_role),   
+                    # actor_id=current_user_id 
                     meta={"source": "roles.create_role"},
                 )
             except Exception as e:
@@ -244,6 +249,8 @@ class RoleService:
                     module="gestion_usuarios",
                     object_type="role",
                     object_id=str(db_role.id),
+                    submodule="roles",
+                    feature="update",
                     before=before,
                     after=after,
                     # actor_id=current_user_id
@@ -425,6 +432,8 @@ class RoleService:
                     module="gestion_usuarios",
                     object_type="role",
                     object_id=str(role.id),
+                    submodule="roles",
+                    feature="change_role_status",
                     before=before,
                     after=after,
                     meta={"source": "roles.change_role_status"},
@@ -489,6 +498,8 @@ class RoleService:
                     module="gestion_usuarios",
                     object_type="role",
                     object_id=str(role.id),
+                    submodule="roles",
+                    feature="update_role_permissions",
                     before=before,
                     after=after,
                     meta={"origen": "roles.update_role_permissions"},
@@ -532,6 +543,8 @@ class RoleService:
                     module="gestion_usuarios",
                     object_type="role",
                     object_id=str(role_id),
+                    submodule="roles",
+                    feature="delete_role",
                     before=before,
                     meta={"source": "roles.delete_role"},
                 )
@@ -583,6 +596,8 @@ class UserRoleService:
                     module="gestion_usuarios",
                     object_type="user_roles",
                     object_id=str(user.id),
+                    submodule="roles",
+                    feature="assign_role_to_user",
                     before=before,
                     after=after,
                     # actor_id=str(current_user.id)  # cuando tengas auth
@@ -626,6 +641,8 @@ class UserRoleService:
                     module="gestion_usuarios",
                     object_type="user_roles",
                     object_id=str(user.id),
+                    submodule="roles",
+                    feature="revoke_role_from_user",
                     before=before,
                     after=after,
                     meta={"source": "roles.revoke_role_from_user", "removed": [role.id]},
@@ -680,6 +697,8 @@ class UserRoleService:
                     module="gestion_usuarios",
                     object_type="user_roles",
                     object_id=str(user.id),
+                    submodule="roles",
+                    feature="update_user_roles",
                     before=before,
                     after=after,
                     meta={"source": "users.update_user_roles"},

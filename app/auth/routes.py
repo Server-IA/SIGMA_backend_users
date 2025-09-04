@@ -159,6 +159,8 @@ def login(user_credentials: UserLogin, request: Request, db: Session = Depends(g
                 module="gestion_usuarios",
                 object_type="user",
                 object_id=object_id,    
+                submodule="auth",
+                feature="login",
                 actor_id=actor_id if result == "success" else None, 
                 meta=meta,
             )
