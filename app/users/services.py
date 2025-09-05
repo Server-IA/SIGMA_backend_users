@@ -61,6 +61,22 @@ class UserService:
     def __init__(self, db: Session):
         self.db = db
 
+    def validate_unique_document(self, document_number: str, exclude_user_id: int = None):
+        """
+        Verifica que el número de documento sea único.
+        Si `exclude_user_id` está definido, lo excluye de la búsqueda (para updates).
+        """
+        query = self.db.query(User).filter(User.document_number == document_number)
+        if exclude_user_id:
+            query = query.filter(User.id != exclude_user_id)
+        existing_user = query.first()
+
+        if existing_user:
+            raise HTTPException(
+                status_code=400,
+                detail=f"El número de documento '{document_number}' ya está registrado por otro usuario."
+            )
+
     async def save_profile_picture(self, file: UploadFile) -> str:
         """
         Guarda la imagen de perfil en Firebase Storage con un nombre único
@@ -299,6 +315,10 @@ class UserService:
             db_user = self.db.query(User).filter(User.id == user_id).first()
             if not db_user:
                 raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+            if "document_number" in kwargs:
+                self.validate_unique_document(kwargs["document_number"], exclude_user_id=user_id)
+
             for key, value in kwargs.items():
                 setattr(db_user, key, value)
             self.db.commit()
@@ -895,6 +915,9 @@ class UserService:
                             birthday: datetime, gender_id: int, roles: List[int], admin_id: int):
         try:
             # Se crea el usuario según los parámetros
+
+            self.validate_unique_document(document_number)
+
             db_user = User(
                 name=name,
                 first_last_name=first_last_name,
