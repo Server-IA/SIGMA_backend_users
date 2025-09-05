@@ -185,7 +185,7 @@ def logout(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error al revocar el token: {str(e)}")
 
 @router.post("/request-reset-password", response_model=ResetPasswordResponse)
-def request_reset_password(reset_request: ResetPasswordRequest, db: Session = Depends(get_db)):
+def request_reset_password(reset_request: ResetPasswordRequest, request: Request, db: Session = Depends(get_db)):
     """
     Solicita el restablecimiento de contraseña: valida el email, inhabilita tokens previos 
     y genera un token nuevo que se envía por correo electrónico.
@@ -194,7 +194,7 @@ def request_reset_password(reset_request: ResetPasswordRequest, db: Session = De
     # Valida que el usuario exista (de lo contrario se lanza error)
     user_service.get_user_by_username(reset_request.email)
     # Capturar el token retornado
-    token = user_service.generate_reset_token(reset_request.email)
+    token = user_service.generate_reset_token(reset_request.email, request)
     return ResetPasswordResponse(
         message="Se ha enviado un enlace de restablecimiento a tu correo electrónico", 
         token=token

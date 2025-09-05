@@ -250,7 +250,7 @@ class RoleService:
                     object_type="role",
                     object_id=str(db_role.id),
                     submodule="roles",
-                    feature="update",
+                    feature="edit",
                     before=before,
                     after=after,
                     # actor_id=current_user_id
@@ -433,7 +433,7 @@ class RoleService:
                     object_type="role",
                     object_id=str(role.id),
                     submodule="roles",
-                    feature="change_role_status",
+                    feature="change_status",
                     before=before,
                     after=after,
                     meta={"source": "roles.change_role_status"},
@@ -502,7 +502,7 @@ class RoleService:
                     feature="update_role_permissions",
                     before=before,
                     after=after,
-                    meta={"origen": "roles.update_role_permissions"},
+                    meta={"source": "roles.update_role_permissions"},
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en update_role_permissions: {e}")
@@ -544,7 +544,7 @@ class RoleService:
                     object_type="role",
                     object_id=str(role_id),
                     submodule="roles",
-                    feature="delete_role",
+                    feature="delete",
                     before=before,
                     meta={"source": "roles.delete_role"},
                 )
@@ -597,11 +597,11 @@ class UserRoleService:
                     object_type="user_roles",
                     object_id=str(user.id),
                     submodule="roles",
-                    feature="assign_role_to_user",
+                    feature="assign_role",
                     before=before,
                     after=after,
                     # actor_id=str(current_user.id)  # cuando tengas auth
-                    meta={"source": "roles.assign_role", "added": [role.id]},
+                    meta={"source": "roles.assign_role_to_user", "added": [role.id]},
                 )
             except Exception as e:
                 logging.warning(f"Auditoría falló en assign_role_to_user: {e}")
@@ -642,7 +642,7 @@ class UserRoleService:
                     object_type="user_roles",
                     object_id=str(user.id),
                     submodule="roles",
-                    feature="revoke_role_from_user",
+                    feature="revoke_role",
                     before=before,
                     after=after,
                     meta={"source": "roles.revoke_role_from_user", "removed": [role.id]},

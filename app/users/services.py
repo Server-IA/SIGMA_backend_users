@@ -460,13 +460,13 @@ class UserService:
             if not status_obj:
                 raise HTTPException(status_code=400, detail="Estado no válido.")
 
-            before = user.snapshot(user)
+            before = user_snapshot(user)
 
             user.status_id = new_status
             self.db.commit()
             self.db.refresh(user)
 
-            after = user.snapshot(user)
+            after = user_snapshot(user)
 
             # Auditoría
             try:
@@ -475,7 +475,7 @@ class UserService:
                     object_type="user_status",
                     object_id=str(user.id),
                     submodule="users",
-                    feature="change_user_status",
+                    feature="change_status",
                     actor_id=str(actor_id) if actor_id else None,
                     before=before,
                     after=after,
@@ -521,7 +521,7 @@ class UserService:
                 }
             })
 
-    def generate_reset_token(self, email: str) -> str:
+    def generate_reset_token(self, email: str, request: Request) -> str:
         """
         Genera un token único para restablecer la contraseña, lo guarda en la BD
         y envía un correo electrónico con el enlace de reseteo.
@@ -545,7 +545,26 @@ class UserService:
             password_reset = PasswordReset(email=email, token=token, expiration=expiration_time)
             self.db.add(password_reset)
             self.db.commit()
-            
+
+            # Auditoría
+            try:
+                AuditClient(request).create(
+                    module="gestion_usuarios",
+                    submodule="auth",
+                    feature="generate_reset_token",
+                    object_type="password_reset",
+                    object_id=str(user.id),
+                    after={
+                        "user_id": user.id,
+                        "email": user.email,
+                        "expiration": expiration_time.isoformat(),
+                        "token_redacted": True
+                    },
+                    meta={"source": "auth.generate_reset_token"},
+                )
+            except Exception as e:
+                logging.warning(f"No se pudo emitir auditoría en generate_reset_token: {e}")
+
             # Enviar correo electrónico
             email_service = EmailService()
             user_name = user.name or user.email.split('@')[0]  # Usar nombre o primera parte del email
@@ -623,15 +642,15 @@ class UserService:
             # Auditoría
             try:
                 AuditClient(request).update(
-                    module="auth",
+                    module="gestion_usuarios",
                     object_type="user_password",
                     object_id=object_id,
-                    submodule="users",
+                    submodule="auth",
                     feature="update_password_token",
                     actor_id=object_id,  
                     before=before,
                     after=after,
-                    meta={"source": "users.update_password_token", "flow": "password_reset_token", "result": "success"}
+                    meta={"source": "auth.update_password_token", "flow": "password_reset_token", "result": "success"}
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en update_password (éxito): {e}")
@@ -672,10 +691,10 @@ class UserService:
 
                     AuditClient(request).emit(
                         operation="UPDATE",           
-                        module="auth",
+                        module="gestion_usuarios",
                         object_type="user_password",
                         object_id=object_id,       
-                        submodule="users",
+                        submodule="auth",
                         feature="update_password_token", 
                         actor_id=None,                 
                         meta=meta,
@@ -974,12 +993,12 @@ class UserService:
             if not token_obj:
                 raise HTTPException(status_code=400, detail="Token de activación inválido o expirado. Por favor, solicite uno nuevo.")
 
-            before = user_snapshot(user)
-
             user = self.db.query(User).filter(User.id == token_obj.user_id).first()
 
             if not user:
                 raise HTTPException(status_code=404, detail="Usuario no encontrado. Por favor, contacte al administrador.")
+
+            before = user_snapshot(user)
 
             token_obj.used = True
             if user.status_id is None or user.status_id != 1 and user.email_status==False:
@@ -993,15 +1012,15 @@ class UserService:
             # Auditoría 
             try:
                 AuditClient(request).update(
-                    module="auth",
+                    module="gestion_usuarios",
                     object_type="user",
                     object_id=str(user.id),
-                    submodule="users",
+                    submodule="auth",
                     feature="activate_account",
                     actor_id=str(user.id),  # activación self-service
                     before=before,
                     after=user_snapshot(user),
-                    meta={"source": "users.activate_account"}
+                    meta={"source": "auth.activate_account"}
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en activate_account: {e}")
