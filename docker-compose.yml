@@ -10,8 +10,7 @@ services:
       - .env
     networks:
       - shared_net
-    volumes:
-      - ".:/app"
+
 networks:
   shared_net:
     external: true

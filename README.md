@@ -54,7 +54,7 @@ docker network create shared_net
 
 ## 4. Levantar el Contenedor
 
-El backend de **Users Sigma** depende de los servicios definidos en el proyecto **main**, especialmente la base de datos.  
+El backend de **Users Sigma** depende de los servicios definidos en el proyecto **main** en el repositorio https://github.com/Usuario/AppMachineryPayrollBackend.git, especialmente la base de datos.  
 Por esta razón, **antes de iniciar este contenedor debes asegurarte de que el proyecto `main` ya esté levantado** con su `docker-compose`.
 
 Una vez verificado lo anterior, puedes construir e iniciar el servicio de este proyecto con:
