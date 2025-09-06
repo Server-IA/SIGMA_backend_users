@@ -127,12 +127,13 @@ class RoleService:
             )
             user_service = UserService(self.db)
             for admin in admins:
-                user_service.create_notification(
+                notif = NotificationCreate(
                     user_id=admin.id,
                     title="Nuevo rol creado",
                     message=f"Se ha creado un nuevo rol: {db_role.name}",
                     type="role_creation",
                 )
+            user_service.create_notification(notif)
 
             return db_role
 
@@ -212,13 +213,13 @@ class RoleService:
 
             user_service = UserService(self.db)
             for admin in admins:
-                user_service.create_notification(
+                notif = NotificationCreate(
                     user_id=admin.id,
                     title="Rol actualizado",
                     message=f"El rol '{db_role.name}' ha sido actualizado",
                     type="role_update",
                 )
-
+            user_service.create_notification(notif)
            
             return {
                 "success": True,
@@ -373,13 +374,13 @@ class RoleService:
         
             user_service = UserService(self.db)
             for admin in admins:
-                notification_data = NotificationCreate(
+                notif = NotificationCreate(
                     user_id=admin.id,
                     title="Estado de rol modificado",
                     message=f"El rol '{role.name}' ha sido {status_text}",
                     type="role_status_change"
             )
-            user_service.create_notification(notification_data)
+            user_service.create_notification(notif)
 
             return {"success": True, "data": "Estado del rol actualizado correctamente."}
         except Exception as e:
