@@ -14,6 +14,7 @@ from app.users.models import User
 # Auditoría
 from audit_sdk import AuditClient
 from app.auth.audit_helpers import mask_email, build_login_meta
+from app.users.audit_helpers import pick_primary_role_and_ids
 import logging
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/swagger-login")
@@ -73,11 +74,12 @@ def login(user_credentials: UserLogin, request: Request, db: Session = Depends(g
     object_id = None                  
     username_hint = mask_email(user_credentials.email)
     status_denied = None              
+    actor_role_name = None            # <<< NUEVO
+    actor_role_ids = []               # <<< NUEVO
 
     try:
         user = auth_service.authenticate_user(user_credentials.email, user_credentials.password)
         if not user:
-            # sigue result="failed", reason="invalid_credentials"
             raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
         object_id = str(user.id)      
@@ -132,7 +134,9 @@ def login(user_credentials: UserLogin, request: Request, db: Session = Depends(g
 
         access_token = auth_service.create_access_token(data=token_data)
 
-        
+        # <<< NUEVO: calcular rol principal + ids
+        actor_role_name, actor_role_ids = pick_primary_role_and_ids(user)
+
         result = "success"
         reason = None
 
@@ -154,6 +158,8 @@ def login(user_credentials: UserLogin, request: Request, db: Session = Depends(g
             if status_denied is not None:
                 meta["status_id"] = status_denied
 
+            meta["actor_roles_ids"] = actor_role_ids
+
             AuditClient(request).emit(
                 operation="ACCESS",
                 module="gestion_usuarios",
@@ -162,6 +168,7 @@ def login(user_credentials: UserLogin, request: Request, db: Session = Depends(g
                 submodule="auth",
                 feature="login",
                 actor_id=actor_id if result == "success" else None, 
+                actor_role=actor_role_name if result == "success" else None,  
                 meta=meta,
             )
         except Exception as e:

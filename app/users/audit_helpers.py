@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 def user_snapshot(user_obj) -> dict:
     """Snapshot compacto para auditoría de usuario."""
@@ -40,3 +40,25 @@ def prereg_attempt_meta(
         "result": result,   # "allowed" | "denied" | "error"
         "reason": reason,
     }
+
+def pick_primary_role_and_ids(user_obj) -> tuple[Optional[str], list[int]]:
+    """
+    Devuelve (actor_role_principal, lista_ids_roles).
+    Reglas:
+      1) Si tiene "Administrador" (case-insensitive), ese es el principal.
+      2) Si no, el primero de la lista.
+      3) Si no tiene roles, principal=None y lista vacía.
+    """
+    roles = getattr(user_obj, "roles", None) or []
+    if not roles:
+        return None, []
+
+    # Normalizar nombres y buscar 'Administrador'
+    admin = next(
+        (r for r in roles if (getattr(r, "name", "") or "").strip().lower() == "administrador"),
+        None
+    )
+    primary = getattr(admin, "name", None) if admin else getattr(roles[0], "name", None)
+    ids = [getattr(r, "id", None) for r in roles if getattr(r, "id", None) is not None]
+
+    return primary, ids
