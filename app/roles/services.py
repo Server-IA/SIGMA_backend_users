@@ -132,7 +132,7 @@ class RoleService:
                     title="Nuevo rol creado",
                     message=f"Se ha creado un nuevo rol: {db_role.name}",
                     type="role_creation",
-            )
+                )
             user_service.create_notification(notif)
 
             return db_role
@@ -218,9 +218,9 @@ class RoleService:
                     title="Rol actualizado",
                     message=f"El rol '{db_role.name}' ha sido actualizado",
                     type="role_update",
-            )
+                )
             user_service.create_notification(notif)
-
+           
             return {
                 "success": True,
                 "message": "Rol editado correctamente",
