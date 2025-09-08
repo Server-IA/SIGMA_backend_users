@@ -31,6 +31,25 @@ from app.auth.services import AuthService
 
 router = APIRouter(tags=["Users"])
 
+def check_permission_or_admin(current_user: dict, required_permission_id: int):
+    """
+    Verifica si el usuario tiene el permiso (por ID) o es administrador (rol ID: 1)
+    """
+    # Verificar si es administrador
+    user_roles = current_user.get("rol", [])
+    for role in user_roles:
+        if role.get("id") == 1:  # Rol Administrador
+            return True
+
+    # Verificar permisos específicos por ID
+    permisos_usuario = [
+        perm.get("id")
+        for rol in user_roles
+        for perm in rol.get("permisos", [])
+    ]
+
+    return required_permission_id in permisos_usuario
+
 ############################################
 # Endpoints para pre-registro y activación #
 ############################################
@@ -158,8 +177,14 @@ async def edit_profile(
     """
     Permite a un usuario normal editar su perfil básico: país, departamento, ciudad, dirección y teléfono.
     """
-    if current_user.get("id") != user_id:
-        raise HTTPException(status_code=403, detail="No tiene permisos para editar este usuario")
+    # Verificar permiso o si es administrador (users.profile.edit -> ID 64)
+    if not check_permission_or_admin(current_user, 64):
+        raise HTTPException(status_code=403, detail="No tiene permisos para editar perfiles de usuario")
+    
+    # Si no es admin, solo puede editar su propio perfil
+    if not any(role.get("id") == 1 for role in current_user.get("rol", [])):
+        if current_user.get("id") != user_id:
+            raise HTTPException(status_code=403, detail="No tiene permisos para editar este usuario")
     try:
         user_service = UserService(db)
         return await user_service.update_basic_profile(
@@ -185,8 +210,14 @@ async def update_photo(
     """
     Permite a un usuario normal actualizar su foto de perfil.
     """
-    if current_user.get("id") != user_id:
-        raise HTTPException(status_code=403, detail="No tiene permisos para editar este usuario")
+    # Verificar permiso o si es administrador (users.photo.update -> ID 65)
+    if not check_permission_or_admin(current_user, 65):
+        raise HTTPException(status_code=403, detail="No tiene permisos para actualizar fotos de usuario")
+    
+    # Si no es admin, solo puede actualizar su propia foto
+    if not any(role.get("id") == 1 for role in current_user.get("rol", [])):
+        if current_user.get("id") != user_id:
+            raise HTTPException(status_code=403, detail="No tiene permisos para editar este usuario")
     try:
         user_service = UserService(db)
         photo_path = await user_service.save_profile_picture(profile_picture)
@@ -211,14 +242,8 @@ def create_user_by_admin(
       - type_document_id, document_number, date_issuance_document,
       - birthday, gender_id, roles.
     """
-
-    permisos_usuario = [
-        perm.get("id")
-        for rol in current_user.get("rol", [])
-        for perm in rol.get("permisos", [])
-    ]
-    
-    if not current_user.get("rol") or 3 not in permisos_usuario:
+    # Verificar permiso o si es administrador (users.create -> ID 3)
+    if not check_permission_or_admin(current_user, 3):
         raise HTTPException(status_code=403, detail="No tiene permisos para crear usuarios")
     try:
         user_service = UserService(db)
@@ -254,14 +279,9 @@ def admin_edit_user(
       - type_document_id, document_number, date_issuance_document,
       - birthday, gender_id y roles.
     """
-    permisos_usuario = [
-        perm.get("id")
-        for rol in current_user.get("rol", [])
-        for perm in rol.get("permisos", [])
-    ]
-    
-    if not current_user.get("rol") or 4 not in permisos_usuario:
-        raise HTTPException(status_code=403, detail="No tiene permisos para editar este usuario")
+    # Verificar permiso o si es administrador (users.edit -> ID 4)
+    if not check_permission_or_admin(current_user, 4):
+        raise HTTPException(status_code=403, detail="No tiene permisos para editar usuarios")
     try:
         user_service = UserService(db)
         
@@ -311,11 +331,16 @@ def get_genders(db: Session = Depends(get_db)):
 @router.post("/change-user-status/")
 def change_user_status(
     request: ChangeUserStatusRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
 ):
     """
     Cambia el estado de un usuario.
     """
+    # Verificar permiso o si es administrador (users.status.change -> ID 66)
+    if not check_permission_or_admin(current_user, 66):
+        raise HTTPException(status_code=403, detail="No tiene permisos para cambiar estado de usuarios")
+    
     try:
         user_service = UserService(db)
         return user_service.change_user_status(request.user_id, request.new_status)
@@ -334,19 +359,32 @@ def change_password(
     y genera una notificación de seguridad.
     Sólo el propio usuario puede cambiar su contraseña.
     """
+    # Verificar permiso o si es administrador (users.password.change -> ID 67)
+    if not check_permission_or_admin(current_user, 67):
+        raise HTTPException(status_code=403, detail="No tiene permisos para cambiar contraseñas de usuario")
     
-    if current_user["id"] != user_id:
-        raise HTTPException(status_code=403, detail="No tienes permiso para cambiar esta contraseña")
+    # Si no es admin, solo puede cambiar su propia contraseña
+    if not any(role.get("id") == 1 for role in current_user.get("rol", [])):
+        if current_user["id"] != user_id:
+            raise HTTPException(status_code=403, detail="No tienes permiso para cambiar esta contraseña")
 
     
     service = UserService(db)
     return service.change_user_password(user_id, request)
 
 @router.get("/{user_id}")
-def list_user(user_id: int, db: Session = Depends(get_db)):
+def list_user(
+    user_id: int, 
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
     """
     Obtiene información detallada de un usuario.
     """
+    # Verificar permiso o si es administrador (users.view -> ID 2)
+    if not check_permission_or_admin(current_user, 2):
+        raise HTTPException(status_code=403, detail="No tiene permisos para ver usuarios")
+    
     try:
         user_service = UserService(db)
         return user_service.list_user(user_id)
@@ -356,10 +394,17 @@ def list_user(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error al obtener el usuario: {str(e)}")
 
 @router.get("/")
-def list_users(db: Session = Depends(get_db)):
+def list_users(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
     """
     Lista todos los usuarios.
     """
+    # Verificar permiso o si es administrador (users.view -> ID 2)
+    if not check_permission_or_admin(current_user, 2):
+        raise HTTPException(status_code=403, detail="No tiene permisos para ver usuarios")
+    
     try:
         user_service = UserService(db)
         return user_service.list_users()
@@ -377,6 +422,10 @@ def get_user_notifications(
     """
     Get all notifications for the currently logged in user
     """
+    # Verificar permiso o si es administrador (users.notifications.view -> ID 68)
+    if not check_permission_or_admin(current_user, 68):
+        raise HTTPException(status_code=403, detail="No tiene permisos para ver notificaciones")
+    
     user_service = UserService(db)
     return user_service.get_user_notifications(current_user["id"])
 
