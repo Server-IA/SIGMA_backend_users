@@ -294,7 +294,7 @@ class EmailService:
         Envía un correo de activación de cuenta SOLO para el endpoint de pre-registro.
         """
         base_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-        activation_url = f"{base_url}/activate-account/{activation_token}"
+        activation_url = f"{base_url}/activation/{activation_token}"
         subject = "Activa tu cuenta en Sigma"
         body = f"""
         Hola {user_name or 'Usuario'},
