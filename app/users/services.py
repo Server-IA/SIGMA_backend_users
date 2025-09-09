@@ -654,7 +654,7 @@ class UserService:
                 message="Validación exitosa. Complete su registro con email y contraseña.",
                 token=token
             )
-        
+
         except HTTPException as e:
             # Propaga el error HTTP original
             raise e
