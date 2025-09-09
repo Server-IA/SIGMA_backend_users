@@ -804,6 +804,9 @@ class UserService:
                 message="¡Su cuenta ha sido activada con éxito! Ahora puede iniciar sesión en el sistema."
             )
 
+        except HTTPException as e:
+            # Propaga el error HTTP original
+            raise e
         except ValueError as e:
             self.db.rollback()
             raise HTTPException(status_code=400, detail=f"Error en la activación: {str(e)}")
