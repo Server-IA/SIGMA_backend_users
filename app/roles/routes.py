@@ -7,24 +7,18 @@ from app.auth.services import AuthService
 
 router = APIRouter(tags=["Roles"])
 
-def check_permission_or_admin(current_user: dict, required_permission_id: int):
+def check_permission(current_user: dict, required_permission_id: int):
     """
-    Verifica si el usuario tiene el permiso (por ID) o es administrador (rol ID: 1)
+    Verifica si el usuario tiene el permiso (por ID).
     """
-    # Verificar si es administrador
     user_roles = current_user.get("rol", [])
-    for role in user_roles:
-        if role.get("id") == 1:  # Rol Administrador
-            return True
-
-    # Verificar permisos específicos por ID
     permisos_usuario = [
         perm.get("id")
         for rol in user_roles
         for perm in rol.get("permisos", [])
     ]
-
     return required_permission_id in permisos_usuario
+
 
 @router.get("/")
 def list_roles(
@@ -32,7 +26,7 @@ def list_roles(
     current_user: dict = Depends(AuthService.get_current_user)
 ):
     # Verificar permiso o si es administrador (roles.view -> ID 13)
-    if not check_permission_or_admin(current_user, 13):
+    if not check_permission(current_user, 13):
         raise HTTPException(status_code=403, detail="No tiene permisos para ver roles")
     
     role_service = services.RoleService(db)
@@ -45,7 +39,7 @@ def detail_rol(
     current_user: dict = Depends(AuthService.get_current_user)
 ):
     # Verificar permiso o si es administrador (roles.detail -> ID 17)
-    if not check_permission_or_admin(current_user, 17):
+    if not check_permission(current_user, 17):
         raise HTTPException(status_code=403, detail="No tiene permisos para ver detalles de roles")
     
     role_service = services.RoleService(db)
@@ -57,7 +51,7 @@ def list_permissions(
     current_user: dict = Depends(AuthService.get_current_user)
 ):
     # Verificar permiso o si es administrador (permissions.view -> ID 20)
-    if not check_permission_or_admin(current_user, 20):
+    if not check_permission(current_user, 20):
         raise HTTPException(status_code=403, detail="No tiene permisos para ver permisos")
     
     permission_service = services.PermissionService(db)
@@ -71,7 +65,7 @@ def create_role(
     current_user: dict = Depends(AuthService.get_current_user)
 ):
     # Verificar permiso o si es administrador (roles.create -> ID 14)
-    if not check_permission_or_admin(current_user, 14):
+    if not check_permission(current_user, 14):
         raise HTTPException(status_code=403, detail="No tiene permisos para crear roles")
     
     role_service = services.RoleService(db)
@@ -86,7 +80,7 @@ def edit_rol(
     current_user: dict = Depends(AuthService.get_current_user)
 ):
     # Verificar permiso o si es administrador (roles.edit -> ID 15)
-    if not check_permission_or_admin(current_user, 15):
+    if not check_permission(current_user, 15):
         raise HTTPException(status_code=403, detail="No tiene permisos para editar roles")
     
     role_service = services.RoleService(db)
@@ -99,7 +93,7 @@ def delete_rol(
     current_user: dict = Depends(AuthService.get_current_user)
 ):
     # Verificar permiso o si es administrador (roles.delete -> ID 16)
-    if not check_permission_or_admin(current_user, 16):
+    if not check_permission(current_user, 16):
         raise HTTPException(status_code=403, detail="No tiene permisos para eliminar roles")
     
     role_service = services.RoleService(db)
@@ -113,7 +107,7 @@ def change_role_status(
 ):
     """Cambiar el estado de un rol"""
     # Verificar permiso o si es administrador (roles.status_change -> ID 18)
-    if not check_permission_or_admin(current_user, 18):
+    if not check_permission(current_user, 18):
         raise HTTPException(status_code=403, detail="No tiene permisos para cambiar estado de roles")
     
     try:
@@ -133,7 +127,7 @@ def get_user_roles(
 ):
     """Obtener la información de un usuario y sus roles asignados"""
     # Verificar permiso o si es administrador (user_roles.view -> ID 6)
-    if not check_permission_or_admin(current_user, 6):
+    if not check_permission(current_user, 6):
         raise HTTPException(status_code=403, detail="No tiene permisos para ver roles de usuarios")
     
     user_role_service = services.UserRoleService(db)
@@ -146,7 +140,7 @@ def create_permission(
     current_user: dict = Depends(AuthService.get_current_user)
 ):
     # Verificar permiso o si es administrador (permissions.create -> ID 21)
-    if not check_permission_or_admin(current_user, 21):
+    if not check_permission(current_user, 21):
         raise HTTPException(status_code=403, detail="No tiene permisos para crear permisos")
     
     permission_service = services.PermissionService(db)
@@ -164,7 +158,7 @@ def update_permissions(
 ):
     """Actualizar los permisos de un rol."""
     # Verificar permiso o si es administrador (roles.permissions_update -> ID 19)
-    if not check_permission_or_admin(current_user, 19):
+    if not check_permission(current_user, 19):
         raise HTTPException(status_code=403, detail="No tiene permisos para actualizar permisos de roles")
     
     role_service = services.RoleService(db)
@@ -178,7 +172,7 @@ def assign_role(
     current_user: dict = Depends(AuthService.get_current_user)
 ):
     # Verificar permiso o si es administrador (user_roles.manage -> ID 7)
-    if not check_permission_or_admin(current_user, 7):
+    if not check_permission(current_user, 7):
         raise HTTPException(status_code=403, detail="No tiene permisos para gestionar roles de usuarios")
     
     user_role_service = services.UserRoleService(db)
@@ -196,7 +190,7 @@ def update_user_roles(
 ):
     """Actualizar los roles de un usuario, asegurando que tenga al menos 1"""
     # Verificar permiso o si es administrador (user_roles.manage -> ID 7)
-    if not check_permission_or_admin(current_user, 7):
+    if not check_permission(current_user, 7):
         raise HTTPException(status_code=403, detail="No tiene permisos para gestionar roles de usuarios")
     
     user_role_service = services.UserRoleService(db)
@@ -211,7 +205,7 @@ def revoke_role(
 ):
     """Revocar un rol de un usuario, asegurando que tenga al menos 1 rol"""
     # Verificar permiso o si es administrador
-    if not check_permission_or_admin(current_user, 7):
+    if not check_permission(current_user, 7):
         raise HTTPException(status_code=403, detail="No tiene permisos para gestionar roles de usuarios")
     
     user_role_service = services.UserRoleService(db)
