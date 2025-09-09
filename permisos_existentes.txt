@@ -1,0 +1,166 @@
+PERMISOS EXISTENTES EN EL SISTEMA
+=====================================
+
+Última actualización: $(date)
+Total de permisos: 21
+
+CATEGORÍA: ADMINISTRACIÓN
+-------------------------
+ID: 1
+Nombre: admin.access
+Descripción: Acceso al panel de administración
+Categoría: Administración
+
+CATEGORÍA: USUARIOS
+--------------------
+ID: 2
+Nombre: users.view
+Descripción: Ver usuarios
+Categoría: Usuarios
+
+ID: 3
+Nombre: users.create
+Descripción: Crear usuarios
+Categoría: Usuarios
+
+ID: 4
+Nombre: users.edit
+Descripción: Editar usuarios
+Categoría: Usuarios
+
+ID: 5
+Nombre: users.delete
+Descripción: Eliminar usuarios
+Categoría: Usuarios
+
+ID: 61
+Nombre: user_roles.view
+Descripción: Ver roles asignados a un usuario
+Categoría: Usuarios
+
+ID: 62
+Nombre: user_roles.manage
+Descripción: Gestionar roles de usuarios (asignar/revocar/actualizar)
+Categoría: Usuarios
+
+ID: 64
+Nombre: users.profile.edit
+Descripción: Editar perfil de usuario
+Categoría: Usuarios
+
+ID: 65
+Nombre: users.photo.update
+Descripción: Actualizar foto de perfil de usuario
+Categoría: Usuarios
+
+ID: 66
+Nombre: users.status.change
+Descripción: Cambiar estado de usuarios (habilitar/inhabilitar)
+Categoría: Usuarios
+
+ID: 67
+Nombre: users.password.change
+Descripción: Cambiar contraseña de usuario
+Categoría: Usuarios
+
+ID: 68
+Nombre: users.notifications.view
+Descripción: Ver notificaciones de usuario
+Categoría: Usuarios
+
+CATEGORÍA: ROLES
+----------------
+ID: 6
+Nombre: roles.view
+Descripción: Ver roles
+Categoría: Roles
+
+ID: 7
+Nombre: roles.create
+Descripción: Crear roles
+Categoría: Roles
+
+ID: 8
+Nombre: roles.edit
+Descripción: Editar roles
+Categoría: Roles
+
+ID: 9
+Nombre: roles.delete
+Descripción: Eliminar roles
+Categoría: Roles
+
+ID: 57
+Nombre: roles.detail
+Descripción: Ver detalles de un rol específico
+Categoría: Roles
+
+ID: 60
+Nombre: roles.status_change
+Descripción: Cambiar estado de roles (habilitar/inhabilitar)
+Categoría: Roles
+
+ID: 63
+Nombre: roles.permissions_update
+Descripción: Actualizar permisos de un rol
+Categoría: Roles
+
+CATEGORÍA: PERMISOS
+-------------------
+ID: 58
+Nombre: permissions.view
+Descripción: Ver lista de permisos
+Categoría: Permisos
+
+ID: 59
+Nombre: permissions.create
+Descripción: Crear nuevos permisos
+Categoría: Permisos
+
+RESUMEN POR CATEGORÍAS
+=======================
+- Administración: 1 permiso
+- Usuarios: 11 permisos
+- Roles: 7 permisos
+- Permisos: 2 permisos
+
+RANGOS DE IDs
+=============
+- IDs 1-9: Permisos originales
+- IDs 57-63: Permisos de roles (saltos por eliminaciones previas)
+- IDs 64-68: Permisos de usuarios adicionales
+
+NOTAS IMPORTANTES
+=================
+- El rol Administrador (ID: 1) tiene bypass completo en todos los endpoints
+- Los permisos están implementados con verificación granular
+- Todos los endpoints de roles están protegidos con permisos específicos
+- Los IDs no se reutilizan cuando se eliminan permisos
+
+ENDPOINTS PROTEGIDOS
+====================
+GET    /users/roles/                    → roles.view (ID: 6)
+POST   /users/roles/                    → roles.create (ID: 7)
+GET    /users/roles/{role_id}           → roles.detail (ID: 57)
+GET    /users/roles/permissions/        → permissions.view (ID: 58)
+POST   /users/roles/permissions/        → permissions.create (ID: 59)
+POST   /users/roles/{role_id}/edit      → roles.edit (ID: 8)
+DELETE /users/roles/{role_id}/delete    → roles.delete (ID: 9)
+POST   /users/roles/change-rol-status/  → roles.status_change (ID: 60)
+GET    /users/roles/user/{user_id}/roles → user_roles.view (ID: 61)
+PUT    /users/roles/user/{user_id}/roles → user_roles.manage (ID: 62)
+PUT    /users/roles/{role_id}/permissions → roles.permissions_update (ID: 63)
+POST   /users/roles/assign_role/         → user_roles.manage (ID: 62)
+DELETE /users/roles/user/{user_id}/role/{role_id} → user_roles.manage (ID: 62)
+
+ENDPOINTS DE USUARIOS PROTEGIDOS
+=================================
+PUT    /users/users/edit-profile/{user_id}        → users.profile.edit (ID: 64)
+PUT    /users/users/update-photo/{user_id}        → users.photo.update (ID: 65)
+POST   /users/users/admin/create                  → users.create (ID: 3)
+PUT    /users/users/admin/edit/{user_id}          → users.edit (ID: 4)
+POST   /users/users/change-user-status/           → users.status.change (ID: 66)
+POST   /users/users/{user_id}/change-password     → users.password.change (ID: 67)
+GET    /users/users/{user_id}                     → users.view (ID: 2)
+GET    /users/users/                              → users.view (ID: 2)
+GET    /users/users/notifications/                → users.notifications.view (ID: 68)
