@@ -654,7 +654,10 @@ class UserService:
                 message="Validación exitosa. Complete su registro con email y contraseña.",
                 token=token
             )
-
+        
+        except HTTPException as e:
+            # Propaga el error HTTP original
+            raise e
         except ValueError as e:
             self.db.rollback()
             raise HTTPException(status_code=400, detail=f"Error en la validación: {str(e)}")
