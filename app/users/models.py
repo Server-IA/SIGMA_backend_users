@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Table
+from sqlalchemy import Column, Integer, String, DateTime, Date, Boolean, ForeignKey, Table
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
@@ -21,9 +21,9 @@ class User(Base):
     name = Column(String)
     email_status = Column(Boolean, nullable=True)
     document_number = Column(Integer, nullable=True)
-    date_issuance_document = Column(DateTime, nullable=True)
+    date_issuance_document = Column(Date, nullable=True)
     type_person_id = Column(Integer, nullable=True)
-    birthday = Column(DateTime, nullable=True)
+    birthday = Column(Date, nullable=True)
     gender_id = Column(Integer, ForeignKey('gender.id'), nullable=True)
     first_last_name = Column(String, nullable=True)
     second_last_name = Column(String, nullable=True)
