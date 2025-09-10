@@ -60,47 +60,46 @@ def list_permissions(
 
 @router.post("/", response_model=schemas.RoleResponse)
 def create_role(
-    role: schemas.RoleCreate, 
+    role: schemas.RoleCreate,
+    request: Request, 
     db: Session = Depends(get_db),
-    current_user: dict = Depends(AuthService.get_current_user)
+    current_user: dict = Depends(AuthService.get_current_user),  
 ):
     # Verificar permiso o si es administrador (roles.create -> ID 14)
     if not check_permission(current_user, 14):
         raise HTTPException(status_code=403, detail="No tiene permisos para crear roles")
     
-def create_role(role: schemas.RoleCreate, request: Request, db: Session = Depends(get_db)):
     role_service = services.RoleService(db)
-    return role_service.create_role(role, request)
-    # return services.create_role(db, role)
+    return role_service.create_role(role, request, current_user)
 
 @router.post("/{role_id}/edit", response_model=schemas.EditRoleResponse)
 def edit_rol(
-    role_id: int, 
-    role: schemas.RoleCreate, 
+    role_id: int,
+    role: schemas.RoleCreate,
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(AuthService.get_current_user)
+    current_user: dict = Depends(AuthService.get_current_user),
 ):
     # Verificar permiso o si es administrador (roles.edit -> ID 15)
     if not check_permission(current_user, 15):
         raise HTTPException(status_code=403, detail="No tiene permisos para editar roles")
-    
-def edit_rol(role_id: int, role: schemas.RoleCreate, request: Request, db: Session = Depends(get_db)):
+
     role_service = services.RoleService(db)
-    return role_service.edit_role(role_id, role, request)
+    return role_service.edit_role(role_id, role, request, current_user)
 
 @router.delete("/{role_id}/delete", response_model=schemas.GenericResponse)
 def delete_rol(
-    role_id: int, 
+    role_id: int,
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(AuthService.get_current_user)
+    current_user: dict = Depends(AuthService.get_current_user),
 ):
     # Verificar permiso o si es administrador (roles.delete -> ID 16)
     if not check_permission(current_user, 16):
         raise HTTPException(status_code=403, detail="No tiene permisos para eliminar roles")
-    
-def delete_rol(role_id: int, request: Request, db: Session = Depends(get_db)):
+
     role_service = services.RoleService(db)
-    return role_service.delete_role(role_id, request)
+    return role_service.delete_role(role_id, request, current_user)
 
 
 @router.post("/change-rol-status/")
@@ -117,7 +116,7 @@ def change_role_status(
 
     try:
         role_service = services.RoleService(db)
-        return role_service.change_role_status(payload.rol_id, payload.new_status, request)
+        return role_service.change_role_status(payload.rol_id, payload.new_status, request, current_user)
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -152,7 +151,7 @@ def create_permission(
         raise HTTPException(status_code=403, detail="No tiene permisos para crear permisos")
 
     permission_service = services.PermissionService(db)
-    return permission_service.create_permission(permission, request)
+    return permission_service.create_permission(permission, request, current_user)
 
 
 
@@ -170,7 +169,7 @@ def update_permissions(
         raise HTTPException(status_code=403, detail="No tiene permisos para actualizar permisos de roles")
 
     role_service = services.RoleService(db)
-    return role_service.update_role_permissions(role_id, body.permissions, request)
+    return role_service.update_role_permissions(role_id, body.permissions, request, current_user)
 
 @router.post("/assign_role/")
 def assign_role(
@@ -188,6 +187,7 @@ def assign_role(
         body.user_id,
         body.role_id,
         request,
+        current_user
     )
 
 
@@ -205,7 +205,7 @@ def update_user_roles(
         raise HTTPException(status_code=403, detail="No tiene permisos para gestionar roles de usuarios")
 
     user_role_service = services.UserRoleService(db)
-    return user_role_service.update_user_roles(user_id, body.roles, request)
+    return user_role_service.update_user_roles(user_id, body.roles, request, current_user)
 
 @router.delete("/user/{user_id}/role/{role_id}", tags=["Usuarios"])
 def revoke_role(
@@ -221,7 +221,7 @@ def revoke_role(
         raise HTTPException(status_code=403, detail="No tiene permisos para gestionar roles de usuarios")
 
     user_role_service = services.UserRoleService(db)
-    return user_role_service.revoke_role_from_user(user_id, role_id, request)
+    return user_role_service.revoke_role_from_user(user_id, role_id, request, current_user)
 
 
 

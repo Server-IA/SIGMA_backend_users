@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 
 # Auditoría (SDK)
 from audit_sdk import AuditClient
-from app.users.audit_helpers import user_snapshot, prereg_attempt_meta
+from app.users.audit_helpers import user_snapshot, pick_primary_role_and_ids_from_current_user,prereg_attempt_meta
 import logging
 
 load_dotenv()
@@ -313,7 +313,7 @@ class UserService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Contacta con el administrador: {str(e)}")
 
-    def update_user(self, user_id: int, admin_update: bool = False, request: Request = None, admin_id: int = None, **kwargs):
+    def update_user(self, user_id: int, admin_update: bool = False, request: Request = None, admin_id: int = None, current_user: dict | None = None, **kwargs):
         """Actualiza los detalles de un usuario y, si admin_update es True, envía una notificación."""
         try:
             db_user = self.db.query(User).filter(User.id == user_id).first()
@@ -333,18 +333,23 @@ class UserService:
 
             # Auditoría
             try:
+                actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+
                 AuditClient(request).update(
                     module="gestion_usuarios",
                     object_type="user",
                     object_id=str(db_user.id),
                     submodule="users",
                     feature="update_user",
-                    actor_id=str(admin_id) if admin_id else None,
                     before=before,
                     after=after,
+                    actor_id=actor_id,
+                    actor_role_name=actor_role_name,
                     meta={
                         "source": "users.update_user",
                         "admin_update": bool(admin_update),
+                        "actor_role_ids": actor_role_ids
                     },
                 )
             except Exception as e:
@@ -450,7 +455,7 @@ class UserService:
                 }
             })
 
-    def change_user_status(self, user_id: int, new_status: int, request: Request, actor_id: int | None = None):
+    def change_user_status(self, user_id: int, new_status: int, request: Request, actor_id: int | None = None, current_user: dict | None = None):
         try:
             user = self.db.query(User).filter(User.id == user_id).first()
             if not user:
@@ -470,18 +475,23 @@ class UserService:
 
             # Auditoría
             try:
+                actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+
                 AuditClient(request).update(
                     module="gestion_usuarios",
                     object_type="user_status",
                     object_id=str(user.id),
                     submodule="users",
                     feature="change_status",
-                    actor_id=str(actor_id) if actor_id else None,
                     before=before,
                     after=after,
+                    actor_id=actor_id,
+                    actor_role_name=actor_role_name,
                     meta={
                         "source": "users.change_user_status",
-                        "new_status": new_status
+                        "new_status": new_status,
+                        "actor_role_ids": actor_role_ids,
                     },
                 )
             except Exception as e:
@@ -597,13 +607,9 @@ class UserService:
             )
 
     def update_password(self, token: str, new_password: str, request: Request) -> dict:
-        """
-        Actualiza la contraseña con un token de restablecimiento y genera auditoría
-        (registra tanto éxitos como fallos).
-        """
         result = "failed"              # success | failed
         reason = "invalid_or_expired_token"
-        object_id = None               # se llenará cuando identifiquemos al usuario
+        object_id = None              
         token_hint = f"{token[:8]}…" if token else None
 
         try:
@@ -639,7 +645,7 @@ class UserService:
 
             after = user_snapshot(user)
 
-            # Auditoría
+            # Auditoría (success)
             try:
                 AuditClient(request).update(
                     module="gestion_usuarios",
@@ -647,10 +653,14 @@ class UserService:
                     object_id=object_id,
                     submodule="auth",
                     feature="update_password_token",
-                    actor_id=object_id,  
+                    actor_id=str(user.id),  
                     before=before,
                     after=after,
-                    meta={"source": "auth.update_password_token", "flow": "password_reset_token", "result": "success"}
+                    meta={
+                        "source": "auth.update_password_token", 
+                        "flow": "password_reset_token", 
+                        "result": "success"
+                    }
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en update_password (éxito): {e}")
@@ -682,7 +692,7 @@ class UserService:
             )
 
         finally:
-            # Auditoría 
+            # Auditoría (failed)
             if result != "success":
                 try:
                     meta = {"result": result, "flow": "password_reset_token"}
@@ -703,7 +713,7 @@ class UserService:
                     logging.warning(f"No se pudo emitir auditoría en update_password (fallo): {e}")
 
 
-    def change_user_password(self, user_id: int, password_data: ChangePasswordRequest, request: Request, actor_id: int | None = None):
+    def change_user_password(self, user_id: int, password_data: ChangePasswordRequest, request: Request, current_user: dict):
         """
         Actualiza la contraseña de un usuario verificando la contraseña actual
         y genera una notificación de tipo 'security'.
@@ -737,16 +747,23 @@ class UserService:
 
             # Auditoría 
             try:
+                actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+
                 AuditClient(request).update(
                     module="gestion_usuarios",
                     object_type="user",
                     object_id=str(user.id),
                     submodule="users",
                     feature="change_user_password",
-                    actor_id=str(actor_id) if actor_id else None,
                     before=before,
                     after=after,
-                    meta={"source": "users.change_user_password", "result": "success"}
+                    actor_id=actor_id,
+                    actor_role_name=actor_role_name,
+                    meta={
+                        "source": "users.change_user_password", "result": "success"
+                        ,"actor_role_ids": actor_role_ids
+                    },
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en cambio de contraseña: {e}")
@@ -983,33 +1000,42 @@ class UserService:
             raise HTTPException(status_code=500, detail=f"Error inesperado: {str(e)}")
 
     async def activate_account(self, activation_token: str, request: Request) -> ActivateAccountResponse:
-        try:
-            token_obj = self.db.query(ActivationToken).filter(
-                ActivationToken.token == activation_token,
-                ActivationToken.used == False,
-                ActivationToken.expires_at > datetime.utcnow()
-            ).first()
+        result = "failed"        # "success" | "failed" | "denied"
+        reason = "invalid_or_expired_token"
+        token_hint = f"{activation_token[:8]}…" if activation_token else None
+        object_id = None
 
+        try:
+            token_obj = (
+                self.db.query(ActivationToken)
+                .filter(
+                    ActivationToken.token == activation_token,
+                    ActivationToken.used == False,
+                    ActivationToken.expires_at > datetime.utcnow(),
+                )
+                .first()
+            )
             if not token_obj:
                 raise HTTPException(status_code=400, detail="Token de activación inválido o expirado. Por favor, solicite uno nuevo.")
 
             user = self.db.query(User).filter(User.id == token_obj.user_id).first()
-
             if not user:
+                reason = "user_not_found"
                 raise HTTPException(status_code=404, detail="Usuario no encontrado. Por favor, contacte al administrador.")
 
+            object_id = str(user.id)
             before = user_snapshot(user)
 
+            # marca token y activa si aplica (idempotente)
             token_obj.used = True
-            if user.status_id is None or user.status_id != 1 and user.email_status==False:
+            if (user.status_id is None or user.status_id != 1) and (user.email_status is False):
                 user.status_id = 1
                 user.email_status = True
 
             self.db.commit()
-
             self.db.refresh(user)
 
-            # Auditoría 
+            # --- AUDITORÍA (éxito) 
             try:
                 AuditClient(request).update(
                     module="gestion_usuarios",
@@ -1017,34 +1043,28 @@ class UserService:
                     object_id=str(user.id),
                     submodule="auth",
                     feature="activate_account",
-                    actor_id=str(user.id),  # activación self-service
+                    actor_id=str(user.id),  
                     before=before,
                     after=user_snapshot(user),
-                    meta={"source": "auth.activate_account"}
+                    meta={
+                        "source": "auth.activate_account",
+                        "flow": "account_activation_token",
+                        "result": "success",
+                        **({"token_hint": token_hint} if token_hint else {}),
+                    },
                 )
             except Exception as e:
-                logging.warning(f"No se pudo emitir auditoría en activate_account: {e}")
-            # Enviar correo de bienvenida
+                logging.warning(f"No se pudo emitir auditoría en activate_account (éxito): {e}")
+
             try:
-                print(f"[DEBUG] Iniciando envío de correo de bienvenida")
                 email_service = EmailService()
-                user_name = user.name or user.email.split('@')[0]  # Usar nombre o primera parte del email
-                print(f"[DEBUG] Nombre de usuario para correo de bienvenida: {user_name}")
-                
-                email_sent = email_service.send_welcome_email(
-                    to_email=user.email,
-                    user_name=user_name
-                )
-                
-                if email_sent:
-                    print(f"[DEBUG] Correo de bienvenida enviado exitosamente")
-                else:
-                    print(f"[DEBUG] FALLA en envío de correo de bienvenida")
-                    
+                user_name = user.name or user.email.split('@')[0]
+                email_service.send_welcome_email(to_email=user.email, user_name=user_name)
             except Exception as e:
-                # Si falla el envío del correo de bienvenida, no afectar la activación
-                # Solo log del error para debugging
                 print(f"[DEBUG] Error al enviar correo de bienvenida: {str(e)}")
+
+            result = "success"
+            reason = None
 
             return ActivateAccountResponse(
                 success=True,
@@ -1052,8 +1072,7 @@ class UserService:
             )
 
         except HTTPException as e:
-            # Propaga el error HTTP original
-            raise e
+            raise
         except ValueError as e:
             self.db.rollback()
             raise HTTPException(status_code=400, detail=f"Error en la activación: {str(e)}")
@@ -1063,8 +1082,32 @@ class UserService:
         except Exception as e:
             self.db.rollback()
             raise HTTPException(status_code=500, detail=f"Error inesperado: {str(e)}")
+        finally:
+            # --- AUDITORÍA (fallo) 
+            if result != "success":
+                try:
+                    meta = {
+                        "source": "auth.activate_account",
+                        "flow": "account_activation_token",
+                        "result": result,
+                    }
+                    if reason:
+                        meta["reason"] = reason
+                    if token_hint:
+                        meta["token_hint"] = token_hint
 
-    oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+                    AuditClient(request).emit(
+                        operation="UPDATE",
+                        module="gestion_usuarios",
+                        object_type="user",
+                        object_id=object_id,   
+                        submodule="auth",
+                        feature="activate_account",
+                        actor_id=None,         
+                        meta=meta,
+                    )
+                except Exception as e:
+                    logging.warning(f"No se pudo emitir auditoría en activate_account (fallo): {e}")
 
     def list_user(self, user_id: int):
         """
@@ -1124,7 +1167,8 @@ class UserService:
         address: Optional[str] = None,
         phone: Optional[str] = None,
         profile_picture: Optional[str] = None,
-        request: Request = None
+        request: Request = None,
+        current_user: dict = None
     ) -> dict:
         """
         Actualiza la información básica del perfil del usuario.
@@ -1154,18 +1198,25 @@ class UserService:
 
             after = user_snapshot(user)
 
-            # auditoría (no debe romper el flujo)
+            # Auditoría
             try:
+                actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+
                 AuditClient(request).update(
                     module="gestion_usuarios",
                     object_type="user",
                     object_id=str(user.id),
                     submodule="users",
                     feature="update_basic_profile",
-                    actor_id=str(user_id),
                     before=before,
                     after=after,
-                    meta={"source": "users.update_basic_profile"},
+                    actor_id=actor_id,
+                    actor_role_name=actor_role_name,
+                    meta={
+                        "source": "users.update_basic_profile",
+                        "actor_role_ids": actor_role_ids,
+                    },
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en update_basic_profile: {e}")
@@ -1186,7 +1237,7 @@ class UserService:
 
     def create_user_by_admin(self, name: str, first_last_name: str, second_last_name: str, 
                             type_document_id: int, document_number: str, date_issuance_document: datetime,
-                            birthday: datetime, gender_id: int, roles: List[int], admin_id: int, request: Request):
+                            birthday: datetime, gender_id: int, roles: List[int], admin_id: int, request: Request, current_user: dict):
         try:
             # Se crea el usuario según los parámetros
 
@@ -1217,15 +1268,22 @@ class UserService:
             
             # Auditoría 
             try:
+                actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+                
                 AuditClient(request).create(
                     module="gestion_usuarios",
                     object_type="user",
                     object_id=str(db_user.id),
                     submodule="users",
                     feature="create_user_by_admin",
-                    actor_id=str(admin_id) if admin_id else None,  
                     after=user_snapshot(db_user),
-                    meta={"source": "users.create_user_by_admin"},
+                    actor_id=actor_id,
+                    actor_role_name=actor_role_name,
+                    meta={
+                        "source": "users.create_user_by_admin",
+                        "actor_role_ids": actor_role_ids,
+                    },
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en create_user_by_admin: {e}")

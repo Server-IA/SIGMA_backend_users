@@ -12,6 +12,7 @@ import unicodedata, re
 # Auditoría
 from audit_sdk import AuditClient
 from app.roles.audit_helpers import role_snapshot, user_roles_snapshot, permission_snapshot
+from app.users.audit_helpers import pick_primary_role_and_ids_from_current_user
 import logging
 def _canonical(s: str) -> str:
     # Normaliza Unicode, recorta y colapsa espacios, y hace case-insensitive con casefold
@@ -26,7 +27,7 @@ class PermissionService:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_permission(self, permission: schemas.PermissionBase, request: Request):
+    def create_permission(self, permission: schemas.PermissionBase, request: Request, current_user: dict):
         """Crear un permiso con manejo de errores"""
         try:
             db_permission = self.db.query(models.Permission).filter(models.Permission.name == permission.name).first()
@@ -47,6 +48,9 @@ class PermissionService:
 
             # Auditoría
             try:
+                actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+
                 AuditClient(request).create(
                     module="gestion_usuarios",
                     object_type="permission",
@@ -54,8 +58,12 @@ class PermissionService:
                     submodule="permissions",
                     feature="create",
                     after=permission_snapshot(db_permission),
-                    # actor_id=current_user_id  # (cuando tengas autenticación real)
-                    meta={"origen": "permissions.create_permission"},
+                    actor_id=actor_id,
+                    actor_role=actor_role_name,
+                    meta={
+                        "source": "permissions.create_permission",
+                        "actor_roles_ids": actor_role_ids,
+                    },
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en create_permission: {e}")
@@ -89,7 +97,7 @@ class RoleService:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_role(self, role_data: schemas.RoleCreate, request: Request):
+    def create_role(self, role_data: schemas.RoleCreate, request: Request, current_user: dict):
         """Crear un rol verificando que el nombre sea único (ignorando mayúsculas y espacios)."""
         try:
             # 1) Normaliza SIEMPRE el nombre 
@@ -140,6 +148,9 @@ class RoleService:
 
             # Auditoría
             try:
+                actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user or {})
+
                 AuditClient(request).create(
                     module="gestion_usuarios",
                     object_type="role",
@@ -147,8 +158,12 @@ class RoleService:
                     submodule="roles",
                     feature="create",
                     after=role_snapshot(db_role),   
-                    # actor_id=current_user_id 
-                    meta={"source": "roles.create_role"},
+                    actor_id=actor_id,            
+                    actor_role=actor_role_name,    
+                    meta={
+                        "source": "roles.create_role",
+                        "actor_roles_ids": actor_role_ids,
+                    },
                 )
             except Exception as e:
                 # No interrumpir la lógica de negocio si falla auditoría
@@ -182,7 +197,7 @@ class RoleService:
             self.db.rollback()
             raise HTTPException(status_code=500, detail="Error al crear el rol.")
 
-    def edit_role(self, role_id: int, role_data: schemas.RoleCreate, request: Request):
+    def edit_role(self, role_id: int, role_data: schemas.RoleCreate, request: Request, current_user: dict):
         """Editar un rol verificando nombre único (ignorando mayúsculas/espacios)."""
         try:
             db_role = (
@@ -245,6 +260,9 @@ class RoleService:
 
             # Auditoría 
             try:
+                actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+
                 AuditClient(request).update(
                     module="gestion_usuarios",
                     object_type="role",
@@ -253,8 +271,12 @@ class RoleService:
                     feature="edit",
                     before=before,
                     after=after,
-                    # actor_id=current_user_id
-                    meta={"source": "roles.edit_role"},
+                    actor_id=actor_id,            
+                    actor_role=actor_role_name,
+                    meta={
+                        "source": "roles.edit_role",
+                        "actor_roles_ids": actor_role_ids,
+                    },
                 )
             except Exception as e:
                 logging.warning("Audit emit failed on edit_role: %s", e)
@@ -306,7 +328,13 @@ class RoleService:
                     v.name AS status_name,
                     r.status,
                     COUNT(DISTINCT ur.user_id) AS quantity_users,
-                    COALESCE(string_agg(DISTINCT CONCAT(p.id, ':::::', p.name, ':::::', p.description), ','), '') AS permissions
+                    COALESCE(
+                    string_agg(
+                        DISTINCT (p.id::text || ':::::' || p.name || ':::::' || COALESCE(p.description, '')),
+                        ','
+                    ) FILTER (WHERE p.id IS NOT NULL),
+                    ''
+                    ) AS permissions
                 FROM
                     rol r
                     LEFT JOIN user_rol ur ON ur.rol_id = r.id
@@ -314,27 +342,28 @@ class RoleService:
                     LEFT JOIN rol_permission rp ON rp.rol_id = r.id
                     LEFT JOIN permission p ON p.id = rp.permission_id
                 GROUP BY
-                    r.id,
-                    r.name,
-                    r.description,
-                    v.name,
-                    r.status
+                    r.id, r.name, r.description, v.name, r.status
             """
+
             roles = self.db.execute(text(query)).fetchall()
 
             roles_data = []
             for role in roles:
                 permissions = []
-                if role.permissions:
-                    for permission_str in role.permissions.split(','):
-                        if ':::::' not in permission_str:
+                raw = role.permissions
+                if raw:
+                    for permission_str in str(raw).split(','):
+                        permission_str = permission_str.strip()
+                        if not permission_str or ':::::' not in permission_str:
                             continue
                         parts = permission_str.split(':::::')
                         if len(parts) != 3:
                             continue
-                        perm_id, perm_name, perm_description = parts
+                        perm_id_str, perm_name, perm_description = (p.strip() for p in parts)
+                        if not perm_id_str.isdigit():
+                            continue
                         permissions.append({
-                            "id": int(perm_id),
+                            "id": int(perm_id_str),
                             "name": perm_name,
                             "description": perm_description
                         })
@@ -402,7 +431,7 @@ class RoleService:
                 }
             })
 
-    def change_role_status(self, role_id: int, new_status: int, request: Request):
+    def change_role_status(self, role_id: int, new_status: int, request: Request, current_user: dict):
         """Cambiar el estado de un rol con validación para inhabilitarlo solo si no tiene usuarios asignados"""
         try:
             role = self.db.query(models.Role).filter(models.Role.id == role_id).first()
@@ -428,6 +457,9 @@ class RoleService:
             # Auditoría
             after = role_snapshot(role)
             try:
+                actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+
                 AuditClient(request).update(
                     module="gestion_usuarios",
                     object_type="role",
@@ -436,7 +468,12 @@ class RoleService:
                     feature="change_status",
                     before=before,
                     after=after,
-                    meta={"source": "roles.change_role_status"},
+                    actor_id=actor_id,
+                    actor_role=actor_role_name,
+                    meta={
+                        "source": "roles.change_role_status",
+                        "actor_roles_ids": actor_role_ids,
+                    },
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en change_role_status: {e}")
@@ -466,7 +503,7 @@ class RoleService:
 
         
 
-    def update_role_permissions(self, role_id: int, permission_ids: list[int], request: Request):
+    def update_role_permissions(self, role_id: int, permission_ids: list[int], request: Request, current_user: dict):
         """Actualizar permisos de un rol"""
         try:
             role = self.db.query(models.Role).filter(models.Role.id == role_id).first()
@@ -494,6 +531,9 @@ class RoleService:
 
             # --- Auditoría ---
             try:
+                actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+
                 AuditClient(request).update(
                     module="gestion_usuarios",
                     object_type="role",
@@ -502,7 +542,13 @@ class RoleService:
                     feature="update_role_permissions",
                     before=before,
                     after=after,
-                    meta={"source": "roles.update_role_permissions"},
+                    actor_id=actor_id,
+                    actor_role=actor_role_name,
+                    actor_roles_ids=actor_role_ids,
+                    meta={
+                        "source": "roles.update_role_permissions",
+                        "actor_roles_ids": actor_role_ids,
+                    },
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en update_role_permissions: {e}")
@@ -519,7 +565,7 @@ class RoleService:
             self.db.rollback()
             raise HTTPException(status_code=500, detail={"success": False, "data": "Error al actualizar permisos."})
 
-    def delete_role(self, role_id: int, request: Request):
+    def delete_role(self, role_id: int, request: Request, current_user: dict):
         """Eliminar un rol si no está en uso y no es 'Administrador'"""
         try:
             role = self.db.query(models.Role).filter(models.Role.id == role_id).first()
@@ -539,6 +585,9 @@ class RoleService:
 
             # Auditoría 
             try:
+                actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+
                 AuditClient(request).delete(
                     module="gestion_usuarios",
                     object_type="role",
@@ -546,7 +595,12 @@ class RoleService:
                     submodule="roles",
                     feature="delete",
                     before=before,
-                    meta={"source": "roles.delete_role"},
+                    actor_id=actor_id,
+                    actor_role=actor_role_name,
+                    meta={
+                        "source": "roles.delete_role",
+                        "actor_roles_ids": actor_role_ids,
+                    },
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en delete_role: {e}")
@@ -568,7 +622,7 @@ class UserRoleService:
     def __init__(self, db: Session):
         self.db = db
 
-    def assign_role_to_user(self, user_id: int, role_id: int, request: Request):
+    def assign_role_to_user(self, user_id: int, role_id: int, request: Request, current_user: dict):
         """Asignar un rol a un usuario con validaciones"""
         try:
             user = self.db.query(User).filter(User.id == user_id).first()
@@ -592,6 +646,9 @@ class UserRoleService:
 
             # Auditoría 
             try:
+                actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+
                 AuditClient(request).update(
                     module="gestion_usuarios",
                     object_type="user_roles",
@@ -600,8 +657,12 @@ class UserRoleService:
                     feature="assign_role",
                     before=before,
                     after=after,
-                    # actor_id=str(current_user.id)  # cuando tengas auth
-                    meta={"source": "roles.assign_role_to_user", "added": [role.id]},
+                    actor_id=actor_id,
+                    actor_role=actor_role_name,
+                    meta={
+                        "source": "roles.assign_role_to_user", "added": [role.id],
+                        "actor_roles_ids": actor_role_ids,
+                    },
                 )
             except Exception as e:
                 logging.warning(f"Auditoría falló en assign_role_to_user: {e}")
@@ -611,7 +672,7 @@ class UserRoleService:
             self.db.rollback()
             raise HTTPException(status_code=500, detail={"success": False, "data": "Error al asignar el rol al usuario."})
     
-    def revoke_role_from_user(self, user_id: int, role_id: int, request: Request):
+    def revoke_role_from_user(self, user_id: int, role_id: int, request: Request, current_user: dict):
         """Revocar un rol de un usuario, asegurando que al menos tenga 1 rol asignado"""
         try:
             user = self.db.query(User).filter(User.id == user_id).first()
@@ -637,6 +698,9 @@ class UserRoleService:
 
             # Auditoría
             try:
+                actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+
                 AuditClient(request).update(
                     module="gestion_usuarios",
                     object_type="user_roles",
@@ -645,7 +709,11 @@ class UserRoleService:
                     feature="revoke_role",
                     before=before,
                     after=after,
-                    meta={"source": "roles.revoke_role_from_user", "removed": [role.id]},
+                    actor_id=actor_id,
+                    actor_role=actor_role_name,
+                    meta={
+                        "source": "roles.revoke_role_from_user", "removed": [role.id], 
+                        "actor_roles_ids": actor_role_ids},
                 )
             except Exception as e:
                 logging.warning(f"Auditoría falló en revoke_role_from_user: {e}")
@@ -654,8 +722,8 @@ class UserRoleService:
         except SQLAlchemyError:
             self.db.rollback()
             raise HTTPException(status_code=500, detail={"success": False, "data": "Error al revocar el rol del usuario."})
-      
-    def update_user_roles(self, user_id: int, new_role_ids: list[int], request: Request):
+
+    def update_user_roles(self, user_id: int, new_role_ids: list[int], request: Request, current_user: dict):
         """Actualizar los roles de un usuario asegurando que al menos tenga 1 rol"""
         try:
             user = self.db.query(User).filter(User.id == user_id).first()
@@ -693,6 +761,9 @@ class UserRoleService:
 
             # Auditoría 
             try:
+                actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+
                 AuditClient(request).update(
                     module="gestion_usuarios",
                     object_type="user_roles",
@@ -701,7 +772,12 @@ class UserRoleService:
                     feature="update_user_roles",
                     before=before,
                     after=after,
-                    meta={"source": "users.update_user_roles"},
+                    actor_id=actor_id,
+                    actor_role=actor_role_name,
+                    meta={
+                        "source": "users.update_user_roles",
+                        "actor_roles_ids": actor_role_ids,
+                    },
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en update_user_roles: {e}")

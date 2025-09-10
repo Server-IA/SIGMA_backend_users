@@ -98,7 +98,8 @@ async def complete_pre_register(
 async def activate_account(
     activation_token: str,
     request: Request,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+
 ):
     """
     Activa la cuenta del usuario a través del enlace enviado por email.
@@ -192,7 +193,8 @@ async def edit_profile(
             city=update_data.city,
             address=update_data.address,
             phone=update_data.phone,
-            request=request
+            request=request,
+            current_user=current_user
         )
     except HTTPException as e:
         raise e
@@ -257,7 +259,8 @@ def create_user_by_admin(
             gender_id=user_data.gender_id,
             roles=user_data.roles,
             admin_id=current_user["id"],
-            request=request
+            request=request,
+            current_user=current_user
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -301,7 +304,7 @@ def admin_edit_user(
             update_fields["roles"] = roles_obj
 
         # Se pasa admin_update=True para generar la notificación correspondiente
-        result = user_service.update_user(user_id, admin_update=True, request=request, admin_id=current_user["id"], **update_fields)
+        result = user_service.update_user(user_id, admin_update=True, request=request, admin_id=current_user["id"], **update_fields, current_user=current_user)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al actualizar el usuario: {str(e)}")
@@ -345,7 +348,7 @@ def change_user_status(
 
     try:
         user_service = UserService(db)
-        return user_service.change_user_status(body.user_id, body.new_status, request)
+        return user_service.change_user_status(body.user_id, body.new_status, request, current_user=current_user)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al cambiar el estado del usuario: {str(e)}")
 
@@ -360,32 +363,25 @@ def change_password(
     """
     Actualiza la contraseña del usuario verificando la contraseña actual
     y genera una notificación de seguridad.
-    Sólo el propio usuario puede cambiar su contraseña.
+    Solo el propio usuario o un admin pueden cambiar la contraseña.
     """
-    # Verificar permiso o si es administrador (users.password.change -> ID 11)
+    # 1) Permiso por ID (users.password.change -> 11)
     if not check_permission(current_user, 11):
         raise HTTPException(status_code=403, detail="No tiene permisos para cambiar contraseñas de usuario")
-    
-    # Si no es admin, solo puede cambiar su propia contraseña
-    if not any(role.get("id") == 1 for role in current_user.get("rol", [])):
-        if current_user["id"] != user_id:
-            raise HTTPException(status_code=403, detail="No tienes permiso para cambiar esta contraseña")
-    if current_user["id"] != user_id:
+
+    # 2) Si NO es admin, solo puede cambiar su propia contraseña
+    es_admin = any(role.get("id") == 1 for role in current_user.get("rol", []))
+    if not es_admin and current_user["id"] != user_id:
         raise HTTPException(status_code=403, detail="No tienes permiso para cambiar esta contraseña")
 
+    # 3) Ejecutar servicio
     service = UserService(db)
     return service.change_user_password(
         user_id=user_id,
-        current_password=body.current_password,
-        new_password=body.new_password,
-        request=request,             
-        actor_id=current_user["id"],
+        password_data=body,     # ← pasamos el schema completo
+        request=request,
+        current_user=current_user,
     )
-
-    
-    service = UserService(db)
-    return service.change_user_password(user_id, body, request)
-
 @router.get("/{user_id}")
 def list_user(
     user_id: int, 
