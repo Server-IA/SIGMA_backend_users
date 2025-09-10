@@ -28,6 +28,7 @@ from dotenv import load_dotenv
 # Auditoría (SDK)
 from audit_sdk import AuditClient
 from app.users.audit_helpers import user_snapshot, pick_primary_role_and_ids_from_current_user,prereg_attempt_meta
+from app.auth.audit_helpers import mask_email
 import logging
 
 load_dotenv()
@@ -566,7 +567,7 @@ class UserService:
                     object_id=str(user.id),
                     after={
                         "user_id": user.id,
-                        "email": user.email,
+                        "email_masked": mask_email(user.email),
                         "expiration": expiration_time.isoformat(),
                         "token_redacted": True
                     },
