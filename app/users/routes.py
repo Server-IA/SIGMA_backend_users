@@ -447,21 +447,8 @@ def create_notification(
     current_user: dict = Depends(AuthService.get_current_user)
 ):
     """
-    Create a new notification (admin only)
+    Create a new notification (any user)
     """
-    # Check if the user has admin permissions
-    has_admin_role = False
-    for role in current_user.get("rol", []):
-        if role.get("name") == "Administrador":
-            has_admin_role = True
-            break
-    
-    if not has_admin_role:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"success": False, "data": "No tiene permisos para crear notificaciones"}
-        )
-    
     user_service = UserService(db)
     return user_service.create_notification(notification)
 
