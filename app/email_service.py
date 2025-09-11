@@ -25,7 +25,7 @@ class EmailService:
         """
         # URL base del frontend
         base_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-        reset_url = f"{base_url}/recovery/{reset_token}"
+        reset_url = f"{base_url}/sigma/recovery/{reset_token}"
         
         # Contenido del correo
         subject = "Restablecimiento de Contraseña - Sigma"
@@ -124,7 +124,7 @@ class EmailService:
         """
         # URL base del frontend
         base_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-        activation_url = f"{base_url}/activation/{activation_token}"
+        activation_url = f"{base_url}/sigma/activation/{activation_token}"
         
         # Contenido del correo
         subject = "Activación de Cuenta - Sigma"
@@ -294,7 +294,7 @@ class EmailService:
         Envía un correo de activación de cuenta SOLO para el endpoint de pre-registro.
         """
         base_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-        activation_url = f"{base_url}/activation/{activation_token}"
+        activation_url = f"{base_url}/sigma/activation/{activation_token}"
         subject = "Activa tu cuenta en Sigma"
         body = f"""
         Hola {user_name or 'Usuario'},
