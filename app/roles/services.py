@@ -69,44 +69,27 @@ class RoleService:
         self.db = db
 
     def create_role(self, role_data: schemas.RoleCreate):
-        """Crear un rol verificando que el nombre sea único (ignorando mayúsculas y espacios)."""
         try:
-            # 1) Normaliza SIEMPRE el nombre 
             canon_name = _canonical(role_data.name)
 
-            # 2) Chequeo de unicidad insensible
-            existing_role = (
-                self.db.query(models.Role)
-                .filter(models.Role.name == canon_name)  
-                .first()
-            )
+            existing_role = self.db.query(models.Role).filter(models.Role.name == canon_name).first()
             if existing_role:
-                raise HTTPException(
-                    status_code=400,
-                    detail={"success": False, "data": "El rol ya existe."}
-                )
+                raise HTTPException(status_code=400, detail={"success": False, "data": "El rol ya existe."})
 
-            # 3) Validaciones de negocio
             if not role_data.permissions:
                 raise HTTPException(
                     status_code=400,
                     detail={"success": False, "data": "El rol debe tener al menos un permiso asignado."}
                 )
 
-            permissions = (
-                self.db.query(models.Permission)
-                .filter(models.Permission.id.in_(role_data.permissions))
-                .all()
-            )
-            found_ids = {p.id for p in permissions}
-            missing = set(role_data.permissions) - found_ids
+            permissions = self.db.query(models.Permission).filter(models.Permission.id.in_(role_data.permissions)).all()
+            missing = set(role_data.permissions) - {p.id for p in permissions}
             if missing:
                 raise HTTPException(
                     status_code=400,
                     detail={"success": False, "data": f"Los siguientes permisos no existen: {sorted(missing)}"}
                 )
 
-            # 4) Crear rol con nombre YA normalizado
             db_role = models.Role(
                 name=canon_name,
                 description=role_data.description,
@@ -117,84 +100,77 @@ class RoleService:
             self.db.commit()
             self.db.refresh(db_role)
 
-            # 5) Notificar admins 
-            admins = (
+            # 🔔 Notificar a usuarios con permiso ID 25
+            user_service = UserService(self.db)
+            users_with_permission_25 = (
                 self.db.query(User)
                 .join(models.user_role_table)
                 .join(models.Role)
-                .filter(models.Role.name == _canonical("Administrador"))
+                .join(models.Role.permissions)
+                .filter(models.Permission.id == 25)
                 .all()
             )
-            user_service = UserService(self.db)
-            for admin in admins:
+
+            # Solo crear notificaciones si hay usuarios
+            for user in users_with_permission_25:
                 notif = NotificationCreate(
-                    user_id=admin.id,
+                    user_id=user.id,
                     title="Nuevo rol creado",
                     message=f"Se ha creado un nuevo rol: {db_role.name}",
                     type="role_creation",
                 )
-            user_service.create_notification(notif)
+                user_service.create_notification(notif)
 
             return db_role
 
         except IntegrityError:
             self.db.rollback()
-            # Por si mantienes unique=True en la columna name (recomendado), capturamos carrera
             raise HTTPException(status_code=400, detail="El rol ya existe.")
         except SQLAlchemyError:
             self.db.rollback()
-            raise HTTPException(status_code=500, detail="Error al crear el rol.")
-        
-    def edit_role(self, role_id: int, role_data: schemas.RoleCreate):
-        """Editar un rol verificando nombre único (ignorando mayúsculas/espacios)."""
-        try:
-            db_role = (
-                self.db.query(models.Role)
-                .filter(models.Role.id == role_id)
-                .first()
+            raise HTTPException(
+                status_code=500,
+                detail="Error interno del servidor. Por favor, contacte al administrador."
             )
+
+    def edit_role(self, role_id: int, role_data: schemas.RoleCreate):
+        try:
+            db_role = self.db.query(models.Role).filter(models.Role.id == role_id).first()
             if not db_role:
                 raise HTTPException(
                     status_code=404,
                     detail={"success": False, "data": "El rol no existe."}
                 )
 
-            # Normaliza el nombre entrante
             canon_name = _canonical(role_data.name)
 
-            # Unicidad excluyendo el mismo rol
-            existing_role = (
-                self.db.query(models.Role)
-                .filter(models.Role.id != role_id, models.Role.name == canon_name)
-                .first()
-            )
+            existing_role = self.db.query(models.Role).filter(
+                models.Role.id != role_id,
+                models.Role.name == canon_name
+            ).first()
             if existing_role:
                 raise HTTPException(
                     status_code=400,
                     detail={"success": False, "data": "El rol ya existe."}
                 )
 
-            # Validación de permisos
             if not role_data.permissions:
                 raise HTTPException(
                     status_code=400,
                     detail={"success": False, "data": "El rol debe tener al menos un permiso asignado."}
                 )
 
-            permissions = (
-                self.db.query(models.Permission)
-                .filter(models.Permission.id.in_(role_data.permissions))
-                .all()
-            )
-            found_ids = {p.id for p in permissions}
-            missing = set(role_data.permissions) - found_ids
+            permissions = self.db.query(models.Permission).filter(
+                models.Permission.id.in_(role_data.permissions)
+            ).all()
+            missing = set(role_data.permissions) - {p.id for p in permissions}
             if missing:
                 raise HTTPException(
                     status_code=400,
                     detail={"success": False, "data": f"Los siguientes permisos no existen: {sorted(missing)}"}
                 )
 
-            # Actualiza con nombre normalizado
+            # Actualizar datos del rol
             db_role.name = canon_name
             db_role.description = role_data.description
             db_role.permissions = permissions
@@ -202,25 +178,26 @@ class RoleService:
             self.db.commit()
             self.db.refresh(db_role)
 
-            # Notifica admins (comparación también normalizada)
-            admins = (
+            # 🔔 Notificar a usuarios con permiso ID 25
+            user_service = UserService(self.db)
+            users_with_permission_25 = (
                 self.db.query(User)
                 .join(models.user_role_table)
                 .join(models.Role)
-                .filter(models.Role.name == _canonical("Administrador"))
+                .join(models.Role.permissions)
+                .filter(models.Permission.id == 25)
                 .all()
             )
 
-            user_service = UserService(self.db)
-            for admin in admins:
+            for user in users_with_permission_25:
                 notif = NotificationCreate(
-                    user_id=admin.id,
+                    user_id=user.id,
                     title="Rol actualizado",
                     message=f"El rol '{db_role.name}' ha sido actualizado",
                     type="role_update",
                 )
-            user_service.create_notification(notif)
-           
+                user_service.create_notification(notif)
+
             return {
                 "success": True,
                 "message": "Rol editado correctamente",
@@ -232,8 +209,11 @@ class RoleService:
             raise HTTPException(status_code=400, detail="El rol ya existe.")
         except SQLAlchemyError:
             self.db.rollback()
-            raise HTTPException(status_code=500, detail="Error al editar el rol.")
-            
+            raise HTTPException(
+                status_code=500,
+                detail="Error interno del servidor. Por favor, contacte al administrador."
+            )
+
     def get_roles(self):
         """Obtener todos los roles con manejo de errores"""
         try:
