@@ -346,11 +346,11 @@ class UserService:
                     before=before,
                     after=after,
                     actor_id=actor_id,
-                    actor_role_name=actor_role_name,
+                    actor_role=actor_role_name,
                     meta={
                         "source": "users.update_user",
                         "admin_update": bool(admin_update),
-                        "actor_role_ids": actor_role_ids
+                        "actor_roles_ids": actor_role_ids
                     },
                 )
             except Exception as e:
@@ -479,6 +479,7 @@ class UserService:
                 actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
                 actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
 
+
                 AuditClient(request).update(
                     module="gestion_usuarios",
                     object_type="user_status",
@@ -488,11 +489,11 @@ class UserService:
                     before=before,
                     after=after,
                     actor_id=actor_id,
-                    actor_role_name=actor_role_name,
+                    actor_role=actor_role_name,
                     meta={
                         "source": "users.change_user_status",
                         "new_status": new_status,
-                        "actor_role_ids": actor_role_ids,
+                        "actor_roles_ids": actor_role_ids,
                     },
                 )
             except Exception as e:
@@ -760,10 +761,10 @@ class UserService:
                     before=before,
                     after=after,
                     actor_id=actor_id,
-                    actor_role_name=actor_role_name,
+                    actor_role=actor_role_name,
                     meta={
                         "source": "users.change_user_password", "result": "success"
-                        ,"actor_role_ids": actor_role_ids
+                        ,"actor_roles_ids": actor_role_ids
                     },
                 )
             except Exception as e:
@@ -1213,10 +1214,10 @@ class UserService:
                     before=before,
                     after=after,
                     actor_id=actor_id,
-                    actor_role_name=actor_role_name,
+                    actor_role=actor_role_name,
                     meta={
                         "source": "users.update_basic_profile",
-                        "actor_role_ids": actor_role_ids,
+                        "actor_roles_ids": actor_role_ids,
                     },
                 )
             except Exception as e:
@@ -1280,10 +1281,10 @@ class UserService:
                     feature="create_user_by_admin",
                     after=user_snapshot(db_user),
                     actor_id=actor_id,
-                    actor_role_name=actor_role_name,
+                    actor_role=actor_role_name,
                     meta={
                         "source": "users.create_user_by_admin",
-                        "actor_role_ids": actor_role_ids,
+                        "actor_roles_ids": actor_role_ids,
                     },
                 )
             except Exception as e:

@@ -544,7 +544,6 @@ class RoleService:
                     after=after,
                     actor_id=actor_id,
                     actor_role=actor_role_name,
-                    actor_roles_ids=actor_role_ids,
                     meta={
                         "source": "roles.update_role_permissions",
                         "actor_roles_ids": actor_role_ids,
@@ -609,9 +608,7 @@ class RoleService:
                 success=True,
                 message="Rol eliminado correctamente."
             )
-
-            return {"success": True, "message": "Rol eliminado correctamente"}
-
+        
         except SQLAlchemyError:
             self.db.rollback()
             raise HTTPException(status_code=500, detail={"success": False, "data": "Error al eliminar el rol"})
