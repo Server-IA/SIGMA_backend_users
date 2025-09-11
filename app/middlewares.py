@@ -4,6 +4,7 @@ from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+import os
 
 # **Middleware de Logging para registrar peticiones**
 class LoggingMiddleware(BaseHTTPMiddleware):
