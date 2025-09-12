@@ -1,6 +1,7 @@
 import uuid
 import os
 import smtplib
+import asyncio as _asyncio
 from email.message import EmailMessage
 from datetime import datetime, timedelta, date
 from typing import List, Optional
@@ -24,6 +25,7 @@ from app.firebase_config import bucket
 from app.email_service import EmailService
 import requests
 from dotenv import load_dotenv
+from app.users.ws_routes import manager
 
 # Auditoría (SDK)
 from audit_sdk import AuditClient
@@ -1361,19 +1363,17 @@ class UserService:
 
     def create_notification(self, notification_data: schemas.NotificationCreate):
         """
-        Create a new notification
-        
-        Args:
-            notification_data: NotificationCreate schema with notification details
-            
-        Returns:
-            Dictionary with success status and created notification ID
+        Crear una nueva notificación y enviarla en tiempo real al usuario.
         """
         try:
             user = self.db.query(User).filter(User.id == notification_data.user_id).first()
             if not user:
-                return {"success": False, "data": None, "message": "Usuario no encontrado"}
-            
+                raise HTTPException(
+                    status_code=404,
+                    detail={"success": False, "data": "Usuario no encontrado."}
+                )
+
+            # Crear notificación en BD
             new_notification = Notification(
                 user_id=notification_data.user_id,
                 title=notification_data.title,
@@ -1382,16 +1382,41 @@ class UserService:
                 read=False,
                 created_at=datetime.now()
             )
-            
+
             self.db.add(new_notification)
             self.db.commit()
             self.db.refresh(new_notification)
-            
+
+            payload = {
+                "event": "notification_created",
+                "data": {
+                    "id": new_notification.id,
+                    "title": new_notification.title,
+                    "message": new_notification.message,
+                    "type": new_notification.type,
+                    "created_at": new_notification.created_at.isoformat(),
+                    "read": new_notification.read,
+                }
+            }
+
+            # Enviar por WebSocket si hay event loop disponible
+            try:
+                if getattr(manager, "loop", None) and not manager.loop.is_closed():
+                    # Importar localmente para evitar NameError en entornos donde el import global no se haya evaluado
+                    _asyncio.run_coroutine_threadsafe(
+                        manager.send_personal_message(payload, user_id=new_notification.user_id),
+                        manager.loop
+                    )
+            except Exception as ws_err:
+                # Loguear pero no bloquear la creación por fallos de WS
+                print(f"[WARN] Falló envío WS para user {new_notification.user_id}: {ws_err}")
+
             return {"success": True, "data": {"id": new_notification.id}}
-        except Exception as e:
+
+        except SQLAlchemyError as e:
             self.db.rollback()
             raise HTTPException(
-                status_code=500, 
+                status_code=500,
                 detail={"success": False, "data": {
                     "title": "Error al crear notificación",
                     "message": str(e),
