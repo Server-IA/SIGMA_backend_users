@@ -7,6 +7,7 @@ from app.auth.routes import router as auth_router
 from app.middlewares import setup_middlewares
 from app.exceptions import setup_exception_handlers
 from app.users.models import ensure_default_genders
+from app.users.ws_routes import ws_router
 
 # Auditoría
 from audit_sdk.context_fastapi import AuditContextMiddleware
@@ -29,7 +30,7 @@ setup_exception_handlers(app)
 app.include_router(roles_router, prefix="/users/roles")
 app.include_router(users_router, prefix="/users/users")
 app.include_router(auth_router, prefix="/users/auth")
-
+app.include_router(ws_router)
 
 
 Base.metadata.create_all(bind=engine)

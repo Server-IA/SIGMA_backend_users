@@ -10,7 +10,7 @@ services:
       - .env
     environment:
       SERVICE_NAME: users
-      AUDIT_URL: http://audit-service:8000/audit-events   # servicio auditorías
+      AUDIT_URL: ${AUDIT_URL}
       AUDIT_TOKEN: ${AUDIT_TOKEN}
       AUDIT_HTTP_TIMEOUT: "1.5"
     networks:
