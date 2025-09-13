@@ -1,16 +1,20 @@
+# === Python ===
 venv/
-
 __pycache__/
-
-app/__pycache__
-app/roles/__pycache__
+app/__pycache__/
+app/roles/__pycache__/
 env
 uploads
 .pytest_cache/
 
+# === Entornos ===
 /.env
 .env
 
 # Script para generar tokens de prueba
 get_test_token.py
+
+# === Node.js ===
+node_modules/
+package-lock.json
 
