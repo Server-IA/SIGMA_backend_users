@@ -58,3 +58,8 @@ class GenericResponse(BaseModel):
     success: bool
     message: str
     
+
+
+class ChangeRoleStatusRequest(BaseModel): 
+    rol_id: int
+    new_status: int
