@@ -11,3 +11,6 @@ uploads
 /.env
 .env
 
+# Script para generar tokens de prueba
+get_test_token.py
+
