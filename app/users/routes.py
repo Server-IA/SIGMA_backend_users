@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form , BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form , BackgroundTasks, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session, joinedload
 from typing import Optional, List
@@ -49,8 +49,8 @@ def check_permission(current_user: dict, required_permission_id: int):
 
 @router.post("/pre-register/validate", response_model=PreRegisterResponse)
 async def validate_document_for_pre_register(
-    request: PreRegisterValidationRequest,
-    db: Session = Depends(get_db)
+    body: PreRegisterValidationRequest,
+    request: Request,db: Session = Depends(get_db)
 ):
     """
     Valida que el documento exista y esté asociado a un usuario que aún no ha completado el pre-registro.
@@ -58,9 +58,10 @@ async def validate_document_for_pre_register(
     try:
         user_service = UserService(db)
         return await user_service.validate_for_pre_register(
-            document_type_id=request.document_type_id,
-            document_number=request.document_number,
-            date_issuance_document=request.date_issuance_document
+            document_type_id=body.document_type_id,
+            document_number=body.document_number,
+            date_issuance_document=body.date_issuance_document,
+            request=request
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -71,7 +72,8 @@ async def validate_document_for_pre_register(
 
 @router.post("/pre-register/complete", response_model=PreRegisterResponse)
 async def complete_pre_register(
-    request: PreRegisterCompleteRequest,
+    body: PreRegisterCompleteRequest,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -80,9 +82,10 @@ async def complete_pre_register(
     try:
         user_service = UserService(db)
         return await user_service.complete_pre_register(
-            token=request.token,
-            email=request.email,
-            password=request.password
+            token=body.token,
+            email=body.email,
+            password=body.password,
+            request=request
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -94,14 +97,16 @@ async def complete_pre_register(
 @router.get("/activate-account/{activation_token}", response_model=ActivateAccountResponse)
 async def activate_account(
     activation_token: str,
-    db: Session = Depends(get_db)
+    request: Request,
+    db: Session = Depends(get_db),
+
 ):
     """
     Activa la cuenta del usuario a través del enlace enviado por email.
     """
     try:
         user_service = UserService(db)
-        return await user_service.activate_account(activation_token)
+        return await user_service.activate_account(activation_token, request=request)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException as e:
@@ -164,6 +169,7 @@ def check_profile_completion(user_id: int, db: Session = Depends(get_db)):
 async def edit_profile(
     user_id: int,
     update_data: UserEditRequest,  
+    request: Request,
     db: Session = Depends(get_db),
     current_user: dict = Depends(AuthService.get_current_user)
 ):
@@ -187,6 +193,8 @@ async def edit_profile(
             city=update_data.city,
             address=update_data.address,
             phone=update_data.phone,
+            request=request,
+            current_user=current_user
         )
     except HTTPException as e:
         raise e
@@ -224,7 +232,7 @@ async def update_photo(
 
 @router.post("/admin/create", response_model=AdminUserCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_user_by_admin(
-    user_data: AdminUserCreateRequest, 
+    user_data: AdminUserCreateRequest, request: Request,
     db: Session = Depends(get_db),
     current_user: dict = Depends(AuthService.get_current_user)
 ):
@@ -250,7 +258,9 @@ def create_user_by_admin(
             birthday=user_data.birthday,
             gender_id=user_data.gender_id,
             roles=user_data.roles,
-            admin_id=current_user["id"]  
+            admin_id=current_user["id"],
+            request=request,
+            current_user=current_user
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -262,6 +272,7 @@ def create_user_by_admin(
 def admin_edit_user(
     user_id: int,
     update_data: AdminUserUpdateRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: dict = Depends(AuthService.get_current_user)
 ):
@@ -293,7 +304,7 @@ def admin_edit_user(
             update_fields["roles"] = roles_obj
 
         # Se pasa admin_update=True para generar la notificación correspondiente
-        result = user_service.update_user(user_id, admin_update=True, **update_fields)
+        result = user_service.update_user(user_id, admin_update=True, request=request, admin_id=current_user["id"], **update_fields, current_user=current_user)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al actualizar el usuario: {str(e)}")
@@ -323,9 +334,10 @@ def get_genders(db: Session = Depends(get_db)):
 
 @router.post("/change-user-status/")
 def change_user_status(
-    request: ChangeUserStatusRequest,
+    body: ChangeUserStatusRequest,         
+    request: Request,                     
     db: Session = Depends(get_db),
-    current_user: dict = Depends(AuthService.get_current_user)
+    current_user: dict = Depends(AuthService.get_current_user),
 ):
     """
     Cambia el estado de un usuario.
@@ -333,38 +345,43 @@ def change_user_status(
     # Verificar permiso o si es administrador (users.status.change -> ID 10)
     if not check_permission(current_user, 10):
         raise HTTPException(status_code=403, detail="No tiene permisos para cambiar estado de usuarios")
-    
+
     try:
         user_service = UserService(db)
-        return user_service.change_user_status(request.user_id, request.new_status)
+        return user_service.change_user_status(body.user_id, body.new_status, request, current_user=current_user)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al cambiar el estado del usuario: {str(e)}")
 
 @router.post("/{user_id}/change-password", response_model=dict)
 def change_password(
     user_id: int,
-    request: ChangePasswordRequest,
+    body: ChangePasswordRequest,
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(AuthService.get_current_user)
+    current_user: dict = Depends(AuthService.get_current_user),
 ):
     """
     Actualiza la contraseña del usuario verificando la contraseña actual
     y genera una notificación de seguridad.
-    Sólo el propio usuario puede cambiar su contraseña.
+    Solo el propio usuario o un admin pueden cambiar la contraseña.
     """
-    # Verificar permiso o si es administrador (users.password.change -> ID 11)
+    # 1) Permiso por ID (users.password.change -> 11)
     if not check_permission(current_user, 11):
         raise HTTPException(status_code=403, detail="No tiene permisos para cambiar contraseñas de usuario")
-    
-    # Si no es admin, solo puede cambiar su propia contraseña
-    if not any(role.get("id") == 1 for role in current_user.get("rol", [])):
-        if current_user["id"] != user_id:
-            raise HTTPException(status_code=403, detail="No tienes permiso para cambiar esta contraseña")
 
-    
+    # 2) Si NO es admin, solo puede cambiar su propia contraseña
+    es_admin = any(role.get("id") == 1 for role in current_user.get("rol", []))
+    if not es_admin and current_user["id"] != user_id:
+        raise HTTPException(status_code=403, detail="No tienes permiso para cambiar esta contraseña")
+
+    # 3) Ejecutar servicio
     service = UserService(db)
-    return service.change_user_password(user_id, request)
-
+    return service.change_user_password(
+        user_id=user_id,
+        password_data=body,     # ← pasamos el schema completo
+        request=request,
+        current_user=current_user,
+    )
 @router.get("/{user_id}")
 def list_user(
     user_id: int, 
