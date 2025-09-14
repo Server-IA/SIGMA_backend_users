@@ -1067,6 +1067,13 @@ class UserService:
             except Exception as e:
                 print(f"[DEBUG] Error al enviar correo de bienvenida: {str(e)}")
 
+            # Crear usuario en sistema externo después de activar la cuenta
+            try:
+                create_user_in_external_app(user.id)
+            except Exception as e:
+                logging.error(f"Error al crear usuario en aplicación externa: {str(e)}")
+                # No hacemos rollback ya que la activación fue exitosa
+
             result = "success"
             reason = None
 
@@ -1267,9 +1274,6 @@ class UserService:
             self.db.commit()
             self.db.refresh(db_user)
 
-            # Crear usuario en sistema externo
-            create_user_in_external_app(db_user.id)
-            
             # Auditoría 
             try:
                 actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
