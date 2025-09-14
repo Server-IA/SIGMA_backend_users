@@ -40,6 +40,11 @@ EMAIL_PASSWORD=password_generada
 
 FRONTEND_URL=http://localhost:3000
 EXTERNAL_USERS_API_URL=http://web:8000/main/
+
+SERVICE_NAME=users
+AUDIT_URL=http://audit-service:8002/audit-events
+AUDIT_TOKEN=devtoken
+AUDIT_HTTP_TIMEOUT=1.5
 ```
 
 ## 3. Crear la Red de Docker
