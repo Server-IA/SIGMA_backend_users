@@ -8,5 +8,10 @@ services:
       - "8001:8001"
     env_file:
       - .env
+    environment:
+      SERVICE_NAME: users
+      AUDIT_URL: ${AUDIT_URL}
+      AUDIT_TOKEN: ${AUDIT_TOKEN}
+      AUDIT_HTTP_TIMEOUT: "1.5"
     networks:
       - shared_net

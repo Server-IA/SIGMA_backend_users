@@ -42,3 +42,4 @@ python-multipart>=0.0.6
 firebase_admin
 pydantic[email]
 websockets==14.1
+audit-sdk @ file:///app/vendor/audit_sdk-0.0.0-py3-none-any.whl
