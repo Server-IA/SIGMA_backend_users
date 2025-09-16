@@ -29,7 +29,7 @@ from app.users.ws_routes import manager
 
 # Auditoría (SDK)
 from audit_sdk import AuditClient
-from app.users.audit_helpers import user_snapshot, pick_primary_role_and_ids_from_current_user,prereg_attempt_meta
+from app.users.audit_helpers import user_snapshot, pick_primary_role_and_ids_from_current_user, snapshot_basic_profile, prereg_attempt_meta
 from app.auth.audit_helpers import mask_email
 import logging
 
@@ -316,7 +316,7 @@ class UserService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Contacta con el administrador: {str(e)}")
 
-    def update_user(self, user_id: int, admin_update: bool = False, request: Request = None, admin_id: int = None, current_user: dict | None = None, **kwargs):
+    def update_user(self, user_id: int, admin_update: bool = False, request: Request = None, admin_id: int = None, current_user: dict | None = None, permission_id: int | None = None, **kwargs):
         """Actualiza los detalles de un usuario y, si admin_update es True, envía una notificación."""
         try:
             db_user = self.db.query(User).filter(User.id == user_id).first()
@@ -340,7 +340,7 @@ class UserService:
                 actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
 
                 AuditClient(request).update(
-                    module="gestion_usuarios",
+                    module="users_management",
                     object_type="user",
                     object_id=str(db_user.id),
                     submodule="users",
@@ -349,6 +349,7 @@ class UserService:
                     after=after,
                     actor_id=actor_id,
                     actor_role=actor_role_name,
+                    permission_id=permission_id,
                     meta={
                         "source": "users.update_user",
                         "admin_update": bool(admin_update),
@@ -458,7 +459,7 @@ class UserService:
                 }
             })
 
-    def change_user_status(self, user_id: int, new_status: int, request: Request, actor_id: int | None = None, current_user: dict | None = None):
+    def change_user_status(self, user_id: int, new_status: int, request: Request, actor_id: int | None = None, current_user: dict | None = None, permission_id: int | None = None):
         try:
             user = self.db.query(User).filter(User.id == user_id).first()
             if not user:
@@ -483,7 +484,7 @@ class UserService:
 
 
                 AuditClient(request).update(
-                    module="gestion_usuarios",
+                    module="users_management",
                     object_type="user_status",
                     object_id=str(user.id),
                     submodule="users",
@@ -492,6 +493,7 @@ class UserService:
                     after=after,
                     actor_id=actor_id,
                     actor_role=actor_role_name,
+                    permission_id=permission_id,
                     meta={
                         "source": "users.change_user_status",
                         "new_status": new_status,
@@ -563,7 +565,7 @@ class UserService:
             # Auditoría
             try:
                 AuditClient(request).create(
-                    module="gestion_usuarios",
+                    module="users_management",
                     submodule="auth",
                     feature="generate_reset_token",
                     object_type="password_reset",
@@ -652,7 +654,7 @@ class UserService:
             # Auditoría (success)
             try:
                 AuditClient(request).update(
-                    module="gestion_usuarios",
+                    module="users_management",
                     object_type="user_password",
                     object_id=object_id,
                     submodule="auth",
@@ -704,8 +706,8 @@ class UserService:
                     if token_hint: meta["token_hint"] = token_hint
 
                     AuditClient(request).emit(
-                        operation="UPDATE",           
-                        module="gestion_usuarios",
+                        operation="UPDATE",
+                        module="users_management",
                         object_type="user_password",
                         object_id=object_id,       
                         submodule="auth",
@@ -717,86 +719,109 @@ class UserService:
                     logging.warning(f"No se pudo emitir auditoría en update_password (fallo): {e}")
 
 
-    def change_user_password(self, user_id: int, password_data: ChangePasswordRequest, request: Request, current_user: dict):
-        """
-        Actualiza la contraseña de un usuario verificando la contraseña actual
-        y genera una notificación de tipo 'security'.
-        """
+    def change_user_password(
+        self,
+        user_id: int,
+        password_data: ChangePasswordRequest,
+        request: Request,
+        current_user: dict,
+        permission_id: int | None = None
+    ) -> dict:
         try:
-            # 1. Verificar existencia de usuario
+            # 1) Usuario existe
             user = self.db.query(User).filter(User.id == user_id).first()
             if not user:
                 raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-            # 2. Verificar que tenga contraseña configurada
+            # 2) Tiene contraseña configurada
             if user.password_salt is None:
                 raise HTTPException(
                     status_code=400,
                     detail="El usuario no tiene una contraseña configurada. Usa recuperación de contraseña."
                 )
 
-            # 3. Verificar contraseña actual
+            # 3) Verifica contraseña actual
             if not self.verify_password(user.password_salt, user.password, password_data.old_password):
+                # Auditar intento fallido 
+                try:
+                    actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                    actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+                    AuditClient(request).emit(
+                        operation="ACCESS",  # o "DENY"
+                        module="users_management",
+                        submodule="users",
+                        feature="change_user_password",
+                        object_type="user",
+                        object_id=str(user_id),
+                        actor_id=actor_id,
+                        actor_role=actor_role_name,
+                        before=None,
+                        after=None,
+                        permission_id=permission_id,
+                        diff=None,
+                        meta={
+                            "source": "users.change_user_password",
+                            "result": "denied",
+                            "reason": "wrong_current_password",
+                            "actor_roles_ids": actor_role_ids,
+                        },
+                    )
+                except Exception:
+                    logging.warning("No se pudo emitir auditoría en intento fallido de cambio de contraseña")
                 raise HTTPException(status_code=400, detail="La contraseña actual es incorrecta")
 
-            before = user_snapshot(user)
-
-            # 4. Hashear y guardar nueva contraseña
+            # 4) Guardar nueva contraseña
             new_salt, new_hash = self.hash_password(password_data.new_password)
             user.password = new_hash
             user.password_salt = new_salt
             self.db.commit()
+            self.db.refresh(user)
 
-            after = user_snapshot(user)
-
-            # Auditoría 
+            # 5) Auditoría intento existoso
             try:
                 actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
                 actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
-
-                AuditClient(request).update(
-                    module="gestion_usuarios",
-                    object_type="user",
-                    object_id=str(user.id),
+                AuditClient(request).emit(
+                    operation="UPDATE",
+                    module="users_management",
                     submodule="users",
                     feature="change_user_password",
-                    before=before,
-                    after=after,
+                    object_type="user",
+                    object_id=str(user.id),
                     actor_id=actor_id,
                     actor_role=actor_role_name,
+                    before=None,
+                    after=None,
+                    permission_id=permission_id,
+                    diff=None,
                     meta={
-                        "source": "users.change_user_password", "result": "success"
-                        ,"actor_roles_ids": actor_role_ids
+                        "source": "users.change_user_password",
+                        "result": "success",
+                        "changed_credentials": ["password"],
+                        "actor_roles_ids": actor_role_ids,
                     },
                 )
             except Exception as e:
-                logging.warning(f"No se pudo emitir auditoría en cambio de contraseña: {e}")
-                
-            # 5. Crear notificación
+                logging.warning("No se pudo emitir auditoría en cambio de contraseña: %s", e)
+
+            # 6) Notificación
             notification_data = NotificationCreate(
                 user_id=user.id,
                 title="Cambio de contraseña",
                 message="Has actualizado tu contraseña correctamente. Si no realizaste este cambio, contacta con soporte.",
-                type="security"
+                type="security",
             )
-            notification_res = self.create_notification(notification_data)
-
-            # 6. LOG de depuración
-            print(f"[DEBUG] change_user_password → create_notification devolvió: {notification_res}")
+            self.create_notification(notification_data)
 
             return {"success": True, "data": "Contraseña actualizada correctamente"}
 
         except HTTPException:
-            # Propaga errores conocidos
             raise
         except Exception as e:
             self.db.rollback()
             raise HTTPException(
                 status_code=500,
-                detail={"success": False, "data": {
-                    "title": "Error al actualizar la contraseña",
-                    "message": str(e)
-                }}
+                detail={"success": False, "data": {"title": "Error al actualizar la contraseña", "message": str(e)}}
             )
 
 
@@ -856,7 +881,7 @@ class UserService:
             # Auditoría 
             try:
                 AuditClient(request).create(
-                    module="gestion_usuarios",
+                    module="users_management",
                     object_type="pre_register",
                     object_id=str(user.id),
                     submodule="users",
@@ -944,7 +969,7 @@ class UserService:
             try:
                 after = user_snapshot(user)
                 AuditClient(request).update(
-                    module="gestion_usuarios",
+                    module="users_management",
                     object_type="user",
                     submodule="users",
                     feature="complete_pre_register",
@@ -1042,7 +1067,7 @@ class UserService:
             # --- AUDITORÍA (éxito) 
             try:
                 AuditClient(request).update(
-                    module="gestion_usuarios",
+                    module="users_management",
                     object_type="user",
                     object_id=str(user.id),
                     submodule="auth",
@@ -1109,7 +1134,7 @@ class UserService:
 
                     AuditClient(request).emit(
                         operation="UPDATE",
-                        module="gestion_usuarios",
+                        module="users_management",
                         object_type="user",
                         object_id=object_id,   
                         submodule="auth",
@@ -1179,7 +1204,8 @@ class UserService:
         phone: Optional[str] = None,
         profile_picture: Optional[str] = None,
         request: Request = None,
-        current_user: dict = None
+        current_user: dict = None,
+        permission_id: int | None = None
     ) -> dict:
         """
         Actualiza la información básica del perfil del usuario.
@@ -1189,7 +1215,7 @@ class UserService:
             if not user:
                 raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-            before = user_snapshot(user)
+            before = snapshot_basic_profile(user)
 
             if country is not None:
                 user.country = country
@@ -1207,7 +1233,7 @@ class UserService:
             self.db.commit()
             self.db.refresh(user)
 
-            after = user_snapshot(user)
+            after = snapshot_basic_profile(user)
 
             # Auditoría
             try:
@@ -1215,7 +1241,7 @@ class UserService:
                 actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
 
                 AuditClient(request).update(
-                    module="gestion_usuarios",
+                    module="users_management",
                     object_type="user",
                     object_id=str(user.id),
                     submodule="users",
@@ -1224,6 +1250,7 @@ class UserService:
                     after=after,
                     actor_id=actor_id,
                     actor_role=actor_role_name,
+                    permission_id=permission_id,
                     meta={
                         "source": "users.update_basic_profile",
                         "actor_roles_ids": actor_role_ids,
@@ -1248,7 +1275,7 @@ class UserService:
 
     def create_user_by_admin(self, name: str, first_last_name: str, second_last_name: str, 
                             type_document_id: int, document_number: str, date_issuance_document: datetime,
-                            birthday: datetime, gender_id: int, roles: List[int], admin_id: int, request: Request, current_user: dict):
+                            birthday: datetime, gender_id: int, roles: List[int], admin_id: int, request: Request, current_user: dict, permission_id: int):
         try:
             # Se crea el usuario según los parámetros
 
@@ -1280,7 +1307,7 @@ class UserService:
                 actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
                 
                 AuditClient(request).create(
-                    module="gestion_usuarios",
+                    module="users_management",
                     object_type="user",
                     object_id=str(db_user.id),
                     submodule="users",
@@ -1288,6 +1315,7 @@ class UserService:
                     after=user_snapshot(db_user),
                     actor_id=actor_id,
                     actor_role=actor_role_name,
+                    permission_id=permission_id,
                     meta={
                         "source": "users.create_user_by_admin",
                         "actor_roles_ids": actor_role_ids,
