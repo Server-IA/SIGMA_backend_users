@@ -72,10 +72,10 @@ def login(user_credentials: UserLogin, request: Request, db: Session = Depends(g
     reason = "invalid_credentials"    
     actor_id = None                   
     object_id = None                  
-    username_hint = mask_email(user_credentials.email)
+    username_hint = user_credentials.email
     status_denied = None              
-    actor_role_name = None            # <<< NUEVO
-    actor_role_ids = []               # <<< NUEVO
+    actor_role_name = None         
+    actor_role_ids = []               
 
     try:
         user = auth_service.authenticate_user(user_credentials.email, user_credentials.password)
@@ -120,6 +120,7 @@ def login(user_credentials: UserLogin, request: Request, db: Session = Depends(g
             role_data["permisos"] = permisos
             roles.append(role_data)
 
+        permission_id = 27
         token_data = {
             "sub": user.email,
             "id": user.id,
@@ -134,7 +135,6 @@ def login(user_credentials: UserLogin, request: Request, db: Session = Depends(g
 
         access_token = auth_service.create_access_token(data=token_data)
 
-        # <<< NUEVO: calcular rol principal + ids
         actor_role_name, actor_role_ids = pick_primary_role_and_ids(user)
 
         result = "success"
@@ -162,13 +162,13 @@ def login(user_credentials: UserLogin, request: Request, db: Session = Depends(g
 
             AuditClient(request).emit(
                 operation="ACCESS",
-                module="gestion_usuarios",
+                module="users_management",
                 object_type="user",
                 object_id=object_id,    
                 submodule="auth",
                 feature="login",
                 actor_id=actor_id if result == "success" else None, 
-                actor_role=actor_role_name if result == "success" else None,  
+                actor_role=actor_role_name if result == "success" else None, 
                 meta=meta,
             )
         except Exception as e:

@@ -27,7 +27,7 @@ class PermissionService:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_permission(self, permission: schemas.PermissionBase, request: Request, current_user: dict):
+    def create_permission(self, permission: schemas.PermissionBase, request: Request, current_user: dict, permission_id: int):
         """Crear un permiso con manejo de errores"""
         try:
             db_permission = self.db.query(models.Permission).filter(models.Permission.name == permission.name).first()
@@ -52,7 +52,7 @@ class PermissionService:
                 actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
 
                 AuditClient(request).create(
-                    module="gestion_usuarios",
+                    module="users_management",
                     object_type="permission",
                     object_id=str(db_permission.id),
                     submodule="permissions",
@@ -60,6 +60,7 @@ class PermissionService:
                     after=permission_snapshot(db_permission),
                     actor_id=actor_id,
                     actor_role=actor_role_name,
+                    permission_id=str(permission_id),
                     meta={
                         "source": "permissions.create_permission",
                         "actor_roles_ids": actor_role_ids,
@@ -97,7 +98,7 @@ class RoleService:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_role(self, role_data: schemas.RoleCreate, request: Request, current_user: dict):
+    def create_role(self, role_data: schemas.RoleCreate, request: Request, current_user: dict, permission_id: int):
         """Crear un rol verificando que el nombre sea único (ignorando mayúsculas y espacios)."""
         try:
             canon_name = _canonical(role_data.name)
@@ -134,7 +135,7 @@ class RoleService:
                 actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user or {})
 
                 AuditClient(request).create(
-                    module="gestion_usuarios",
+                    module="users_management",
                     object_type="role",
                     object_id=str(db_role.id),
                     submodule="roles",
@@ -142,6 +143,7 @@ class RoleService:
                     after=role_snapshot(db_role),
                     actor_id=actor_id,
                     actor_role=actor_role_name,
+                    permission_id=str(permission_id),
                     meta={
                         "source": "roles.create_role",
                         "actor_roles_ids": actor_role_ids,
@@ -183,7 +185,7 @@ class RoleService:
                 detail="Error interno del servidor. Por favor, contacte al administrador."
             )
 
-    def edit_role(self, role_id: int, role_data: schemas.RoleCreate, request: Request, current_user: dict):
+    def edit_role(self, role_id: int, role_data: schemas.RoleCreate, request: Request, current_user: dict, permission_id: int):
         try:
             db_role = self.db.query(models.Role).filter(models.Role.id == role_id).first()
             if not db_role:
@@ -238,7 +240,7 @@ class RoleService:
                 actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
 
                 AuditClient(request).update(
-                    module="gestion_usuarios",
+                    module="users_management",
                     object_type="role",
                     object_id=str(db_role.id),
                     submodule="roles",
@@ -247,6 +249,7 @@ class RoleService:
                     after=after,
                     actor_id=actor_id,
                     actor_role=actor_role_name,
+                    permission_id=str(permission_id),
                     meta={
                         "source": "roles.edit_role",
                         "actor_roles_ids": actor_role_ids,
@@ -292,64 +295,69 @@ class RoleService:
             )
 
     def get_roles(self):
-        """Obtener todos los roles con manejo de errores"""
-        try:
-            # Consulta modificada: se usa DISTINCT en el string_agg para evitar duplicados
-            query = """
-                SELECT
-                    r.id AS role_id,
-                    r.name AS role_name,
-                    r.description AS role_description,
-                    v.name AS status_name,
-                    r.status,
-                    COUNT(DISTINCT ur.user_id) AS quantity_users,
-                    COALESCE(string_agg(DISTINCT CONCAT(p.id, ':::::', p.name, ':::::', p.description), ','), '') AS permissions
-                FROM
-                    rol r
-                    LEFT JOIN user_rol ur ON ur.rol_id = r.id
-                    LEFT JOIN vars v ON r.status = v.id
-                    LEFT JOIN rol_permission rp ON rp.rol_id = r.id
-                    LEFT JOIN permission p ON p.id = rp.permission_id
-                GROUP BY
-                    r.id,
-                    r.name,
-                    r.description,
-                    v.name,
-                    r.status
-            """
-            roles = self.db.execute(text(query)).fetchall()
+            """Obtener todos los roles con manejo de errores"""
+            try:
+                # Consulta modificada: se usa DISTINCT en el string_agg para evitar duplicados
+                query = """
+                    SELECT
+                        r.id AS role_id,
+                        r.name AS role_name,
+                        r.description AS role_description,
+                        v.name AS status_name,
+                        r.status,
+                        COUNT(DISTINCT ur.user_id) AS quantity_users,
+                        COALESCE(
+                        string_agg(
+                            DISTINCT CONCAT(p.id, ':::::', p.name, ':::::', COALESCE(p.description, '')),
+                            ','
+                        ) FILTER (WHERE p.id IS NOT NULL),
+                        ''
+                        ) AS permissions
+                    FROM
+                        rol r
+                        LEFT JOIN user_rol ur ON ur.rol_id = r.id
+                        LEFT JOIN vars v ON r.status = v.id
+                        LEFT JOIN rol_permission rp ON rp.rol_id = r.id
+                        LEFT JOIN permission p ON p.id = rp.permission_id
+                    GROUP BY
+                        r.id, r.name, r.description, v.name, r.status;
+                """
+                roles = self.db.execute(text(query)).fetchall()
 
-            roles_data = []
-            for role in roles:
-                permissions = []
-                if role.permissions:
-                    for permission_str in role.permissions.split(','):
-                        if ':::::' not in permission_str:
-                            continue
-                        parts = permission_str.split(':::::')
-                        if len(parts) != 3:
-                            continue
-                        perm_id, perm_name, perm_description = parts
-                        permissions.append({
-                            "id": int(perm_id),
-                            "name": perm_name,
-                            "description": perm_description
-                        })
+                roles_data = []
+                for role in roles:
+                    permissions = []
+                    raw = role.permissions or ''
+                    if raw:
+                        for permission_str in raw.split(','):
+                            if ':::::' not in permission_str:
+                                continue
+                            parts = permission_str.split(':::::')
+                            if len(parts) != 3:
+                                continue
+                            perm_id, perm_name, perm_description = parts
+                            if not perm_id or not perm_id.strip().isdigit():
+                                continue
+                            permissions.append({
+                                "id": int(perm_id),
+                                "name": perm_name,
+                                "description": perm_description or None
+                            })
 
-                role_data = {
-                    "role_id": role.role_id,
-                    "role_name": role.role_name,
-                    "role_description": role.role_description,
-                    "status_name": role.status_name,
-                    "status": role.status,
-                    "quantity_users": role.quantity_users,
-                    "permissions": permissions
-                }
-                roles_data.append(role_data)
+                    role_data = {
+                        "role_id": role.role_id,
+                        "role_name": role.role_name,
+                        "role_description": role.role_description,
+                        "status_name": role.status_name,
+                        "status": role.status,
+                        "quantity_users": role.quantity_users,
+                        "permissions": permissions
+                    }
+                    roles_data.append(role_data)
 
-            return {"success": True, "data": roles_data}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail={"success": False, "data": "Error al obtener los roles." + str(e)})
+                return {"success": True, "data": roles_data}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail={"success": False, "data": "Error al obtener los roles." + str(e)})
 
 
         
@@ -399,7 +407,7 @@ class RoleService:
                 }
             })
 
-    def change_role_status(self, role_id: int, new_status: int, request: Request, current_user: dict):
+    def change_role_status(self, role_id: int, new_status: int, request: Request, current_user: dict, permission_id: int):
         """Cambiar el estado de un rol con validación para inhabilitarlo solo si no tiene usuarios asignados"""
         try:
             role = self.db.query(models.Role).filter(models.Role.id == role_id).first()
@@ -429,7 +437,7 @@ class RoleService:
                 actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
 
                 AuditClient(request).update(
-                    module="gestion_usuarios",
+                    module="users_management",
                     object_type="role",
                     object_id=str(role.id),
                     submodule="roles",
@@ -438,6 +446,7 @@ class RoleService:
                     after=after,
                     actor_id=actor_id,
                     actor_role=actor_role_name,
+                    permission_id=str(permission_id),
                     meta={
                         "source": "roles.change_role_status",
                         "actor_roles_ids": actor_role_ids,
@@ -471,7 +480,7 @@ class RoleService:
 
         
 
-    def update_role_permissions(self, role_id: int, permission_ids: list[int], request: Request, current_user: dict):
+    def update_role_permissions(self, role_id: int, permission_ids: list[int], request: Request, current_user: dict, permission_id: int):
         """Actualizar permisos de un rol"""
         try:
             role = self.db.query(models.Role).filter(models.Role.id == role_id).first()
@@ -503,7 +512,7 @@ class RoleService:
                 actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
 
                 AuditClient(request).update(
-                    module="gestion_usuarios",
+                    module="users management",
                     object_type="role",
                     object_id=str(role.id),
                     submodule="roles",
@@ -512,6 +521,7 @@ class RoleService:
                     after=after,
                     actor_id=actor_id,
                     actor_role=actor_role_name,
+                    permission_id=str(permission_id),
                     meta={
                         "source": "roles.update_role_permissions",
                         "actor_roles_ids": actor_role_ids,
@@ -532,7 +542,7 @@ class RoleService:
             self.db.rollback()
             raise HTTPException(status_code=500, detail={"success": False, "data": "Error al actualizar permisos."})
 
-    def delete_role(self, role_id: int, request: Request, current_user: dict):
+    def delete_role(self, role_id: int, request: Request, current_user: dict, permission_id: int):
         """Eliminar un rol si no está en uso y no es 'Administrador'"""
         try:
             role = self.db.query(models.Role).filter(models.Role.id == role_id).first()
@@ -556,7 +566,7 @@ class RoleService:
                 actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
 
                 AuditClient(request).delete(
-                    module="gestion_usuarios",
+                    module="users_management",
                     object_type="role",
                     object_id=str(role_id),
                     submodule="roles",
@@ -564,6 +574,7 @@ class RoleService:
                     before=before,
                     actor_id=actor_id,
                     actor_role=actor_role_name,
+                    permission_id=str(permission_id),
                     meta={
                         "source": "roles.delete_role",
                         "actor_roles_ids": actor_role_ids,
@@ -587,7 +598,7 @@ class UserRoleService:
     def __init__(self, db: Session):
         self.db = db
 
-    def assign_role_to_user(self, user_id: int, role_id: int, request: Request, current_user: dict):
+    def assign_role_to_user(self, user_id: int, role_id: int, request: Request, current_user: dict, permission_id: int):
         """Asignar un rol a un usuario con validaciones"""
         try:
             user = self.db.query(User).filter(User.id == user_id).first()
@@ -615,7 +626,7 @@ class UserRoleService:
                 actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
 
                 AuditClient(request).update(
-                    module="gestion_usuarios",
+                    module="users_management",
                     object_type="user_roles",
                     object_id=str(user.id),
                     submodule="roles",
@@ -624,6 +635,7 @@ class UserRoleService:
                     after=after,
                     actor_id=actor_id,
                     actor_role=actor_role_name,
+                    permission_id=str(permission_id),
                     meta={
                         "source": "roles.assign_role_to_user", "added": [role.id],
                         "actor_roles_ids": actor_role_ids,
@@ -637,7 +649,7 @@ class UserRoleService:
             self.db.rollback()
             raise HTTPException(status_code=500, detail={"success": False, "data": "Error al asignar el rol al usuario."})
     
-    def revoke_role_from_user(self, user_id: int, role_id: int, request: Request, current_user: dict):
+    def revoke_role_from_user(self, user_id: int, role_id: int, request: Request, current_user: dict, permission_id: int):
         """Revocar un rol de un usuario, asegurando que al menos tenga 1 rol asignado"""
         try:
             user = self.db.query(User).filter(User.id == user_id).first()
@@ -667,7 +679,7 @@ class UserRoleService:
                 actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
 
                 AuditClient(request).update(
-                    module="gestion_usuarios",
+                    module="users_management",
                     object_type="user_roles",
                     object_id=str(user.id),
                     submodule="roles",
@@ -676,6 +688,7 @@ class UserRoleService:
                     after=after,
                     actor_id=actor_id,
                     actor_role=actor_role_name,
+                    permission_id=str(permission_id),
                     meta={
                         "source": "roles.revoke_role_from_user", "removed": [role.id],
                         "actor_roles_ids": actor_role_ids},
@@ -688,76 +701,77 @@ class UserRoleService:
             self.db.rollback()
             raise HTTPException(status_code=500, detail={"success": False, "data": "Error al revocar el rol del usuario."})
       
-    def update_user_roles(self, user_id: int, new_role_ids: list[int], request: Request, current_user: dict):
-      """Actualizar los roles de un usuario asegurando que al menos tenga 1 rol"""
-      try:
-          user = self.db.query(User).filter(User.id == user_id).first()
-          if not user:
-              raise HTTPException(status_code=404, detail={"success": False, "data": "Usuario no encontrado."})
+    def update_user_roles(self, user_id: int, new_role_ids: list[int], request: Request, current_user: dict, permission_id: int):
+        """Actualizar los roles de un usuario asegurando que al menos tenga 1 rol"""
+        try:
+            user = self.db.query(User).filter(User.id == user_id).first()
+            if not user:
+                raise HTTPException(status_code=404, detail={"success": False, "data": "Usuario no encontrado."})
 
-          before = user_roles_snapshot(user)
+            before = user_roles_snapshot(user)
 
-          # Obtener los roles existentes en la BD
-          roles = self.db.query(models.Role).filter(models.Role.id.in_(new_role_ids)).all()
+            # Obtener los roles existentes en la BD
+            roles = self.db.query(models.Role).filter(models.Role.id.in_(new_role_ids)).all()
 
-          # Validar que existen todos los roles enviados
-          found_role_ids = {role.id for role in roles}
-          missing_roles = set(new_role_ids) - found_role_ids
+            # Validar que existen todos los roles enviados
+            found_role_ids = {role.id for role in roles}
+            missing_roles = set(new_role_ids) - found_role_ids
 
-          if missing_roles:
-              raise HTTPException(status_code=400, detail={
-                  "success": False,
-                  "data": f"Los siguientes roles no existen: {list(missing_roles)}"
-              })
+            if missing_roles:
+                raise HTTPException(status_code=400, detail={
+                    "success": False,
+                    "data": f"Los siguientes roles no existen: {list(missing_roles)}"
+                })
 
-          # Validar que el usuario tenga al menos 1 rol
-          if len(roles) < 1:
-              raise HTTPException(status_code=400, detail={
-                  "success": False,
-                  "data": "El usuario debe tener al menos un rol asignado."
-              })
+            # Validar que el usuario tenga al menos 1 rol
+            if len(roles) < 1:
+                raise HTTPException(status_code=400, detail={
+                    "success": False,
+                    "data": "El usuario debe tener al menos un rol asignado."
+                })
 
-          # Asignar los nuevos roles
-          user.roles = roles
-          self.db.commit()
-          self.db.refresh(user)
+            # Asignar los nuevos roles
+            user.roles = roles
+            self.db.commit()
+            self.db.refresh(user)
 
-          after = user_roles_snapshot(user)
+            after = user_roles_snapshot(user)
 
-          # Auditoría
-          try:
-              actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
-              actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+            # Auditoría
+            try:
+                actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
 
-              AuditClient(request).update(
-                  module="gestion_usuarios",
-                  object_type="user_roles",
-                  object_id=str(user.id),
-                  submodule="roles",
-                  feature="update_user_roles",
-                  before=before,
-                  after=after,
-                  actor_id=actor_id,
-                  actor_role=actor_role_name,
-                  meta={
-                      "source": "users.update_user_roles",
-                      "actor_roles_ids": actor_role_ids,
-                  },
-              )
-          except Exception as e:
-              logging.warning(f"No se pudo emitir auditoría en update_user_roles: {e}")
+                AuditClient(request).update(
+                    module="users_management",
+                    object_type="user_roles",
+                    object_id=str(user.id),
+                    submodule="roles",
+                    feature="update_user_roles",
+                    before=before,
+                    after=after,
+                    actor_id=actor_id,
+                    actor_role=actor_role_name,
+                    permission_id=str(permission_id),
+                    meta={
+                        "source": "users.update_user_roles",
+                        "actor_roles_ids": actor_role_ids,
+                    },
+                )
+            except Exception as e:
+                logging.warning(f"No se pudo emitir auditoría en update_user_roles: {e}")
 
-          return {
-              "success": True,
-              "message": "Roles actualizados correctamente",
-              "data": {
-                  "user_id": user.id,
-                  "roles": [{"id": r.id, "name": r.name} for r in user.roles]
-              }
-          }
-      except SQLAlchemyError:
-          self.db.rollback()
-          raise HTTPException(status_code=500, detail={"success": False, "data": "Error al actualizar los roles del usuario."})
+            return {
+                "success": True,
+                "message": "Roles actualizados correctamente",
+                "data": {
+                    "user_id": user.id,
+                    "roles": [{"id": r.id, "name": r.name} for r in user.roles]
+                }
+            }
+        except SQLAlchemyError:
+            self.db.rollback()
+            raise HTTPException(status_code=500, detail={"success": False, "data": "Error al actualizar los roles del usuario."})
 
     def get_user_with_roles(self, user_id: int):
       """Obtener la información de un usuario y sus roles asignados"""

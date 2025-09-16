@@ -1,6 +1,7 @@
 from typing import Optional, Tuple, List, Dict, Any
+
 def user_snapshot(user_obj) -> dict:
-    """Snapshot compacto para auditoría de usuario."""
+    """Snapshot compacto para auditoría general de usuario."""
     roles = getattr(user_obj, "roles", []) or []
     return {
         "id": getattr(user_obj, "id", None),
@@ -11,6 +12,17 @@ def user_snapshot(user_obj) -> dict:
         "gender_id": getattr(user_obj, "gender_id", None),
         "status_id": getattr(user_obj, "status_id", None),
         "roles": sorted([getattr(r, "id", None) for r in roles if getattr(r, "id", None) is not None]),
+    }
+
+def snapshot_basic_profile(user_obj) -> dict:
+    """Snapshot reducido para cambios en perfil básico (país, ciudad, dirección, etc.)."""
+    return {
+        "country": getattr(user_obj, "country", None),
+        "department": getattr(user_obj, "department", None),
+        "city": getattr(user_obj, "city", None),
+        "address": getattr(user_obj, "address", None),
+        "phone": getattr(user_obj, "phone", None),
+        "profile_picture": getattr(user_obj, "profile_picture", None),
     }
 
 def mask_doc(doc: str | None) -> str | None:
@@ -36,7 +48,7 @@ def prereg_attempt_meta(
         "document_type_id": document_type_id,
         "document_number_masked": mask_doc(document_number),
         "date_issuance_document": str(date_issuance_document),
-        "result": result,   # "allowed" | "denied" | "error"
+        "result": result,
         "reason": reason,
     }
 
@@ -44,17 +56,11 @@ def prereg_attempt_meta(
 def pick_primary_role_and_ids(user_obj) -> Tuple[Optional[str], List[int]]:
     """
     Devuelve (actor_role_principal, lista_ids_roles) usando ORM.
-
-    Reglas:
-      1) Si tiene "Administrador" (case-insensitive), ese es el principal.
-      2) Si no, el primero de la lista.
-      3) Si no tiene roles, principal=None y lista vacía.
     """
     roles = getattr(user_obj, "roles", None) or []
     if not roles:
         return None, []
 
-    # Buscar admin normalizado
     admin = next(
         (r for r in roles if (getattr(r, "name", "") or "").strip().lower() == "administrador"),
         None
@@ -68,13 +74,6 @@ def pick_primary_role_and_ids(user_obj) -> Tuple[Optional[str], List[int]]:
 def pick_primary_role_and_ids_from_current_user(current_user: Dict[str, Any]) -> Tuple[Optional[str], List[int]]:
     """
     Devuelve (actor_role_principal, lista_ids_roles) usando payload del JWT.
-
-    current_user: dict con al menos la clave "rol" (lista de roles).
-
-    Reglas:
-      1) Si tiene un rol "Administrador" → ese es el principal.
-      2) Si no, el primero de la lista.
-      3) Si no tiene roles, principal=None y lista vacía.
     """
     roles = current_user.get("rol", []) or []
     if not roles:
