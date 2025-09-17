@@ -399,8 +399,8 @@ def list_user(
     """
     Obtiene información detallada de un usuario.
     """
-    # Verificar permiso o si es administrador (users.view -> ID 2)
-    if not check_permission(current_user, 2):
+    # Verificar permiso o si es administrador (user.view -> ID 5)
+    if not check_permission(current_user, 5):
         raise HTTPException(status_code=403, detail="No tiene permisos para ver usuarios")
     
     try:
