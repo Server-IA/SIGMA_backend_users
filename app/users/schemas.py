@@ -16,7 +16,7 @@ class AdminUserCreateRequest(BaseModel):
     """
     name: str = Field(..., min_length=1, max_length=30, description="Nombres del usuario")
     first_last_name: str = Field(..., min_length=1, max_length=30, description="Primer apellido")
-    second_last_name: str = Field(..., min_length=1, max_length=30, description="Segundo apellido")
+    second_last_name: Optional[str] = Field(None, max_length=30, description="Segundo apellido")
     type_document_id: int = Field(..., description="ID del tipo de documento")
     document_number: str = Field(..., max_length=30, description="Número de documento")
     date_issuance_document: date = Field(..., description="Fecha de expedición del documento")
@@ -227,7 +227,7 @@ class AdminUserUpdateRequest(BaseModel):
     """
     name: str = Field(..., min_length=1, max_length=30, description="Nombres del usuario")
     first_last_name: str = Field(..., min_length=1, max_length=30, description="Primer apellido")
-    second_last_name: str = Field(..., min_length=1, max_length=30, description="Segundo apellido")
+    second_last_name: Optional[str] = Field(None, max_length=30, description="Segundo apellido")
     type_document_id: int = Field(..., description="ID del tipo de documento")
     document_number: str = Field(..., max_length=30, description="Número de documento")
     date_issuance_document: date = Field(..., description="Fecha de expedición del documento")
