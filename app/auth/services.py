@@ -10,7 +10,7 @@ from app.roles.models import Role, Permission
 from Crypto.Protocol.KDF import scrypt
 import os
 
-SECRET_KEY = "your_secret_key"
+SECRET_KEY =  os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440
 
