@@ -6,7 +6,8 @@ from datetime import datetime
 from app.roles.models import Role
 from app.database import get_db
 from app.users import schemas
-from app.users.models import ChangeUserStatusRequest, Notification
+from app.users.models import ChangeUserStatusRequest, Notification, User
+from app.roles.models import role_permission_table, user_role_table    
 from app.users.schemas import (
     AdminUserCreateRequest,
     AdminUserCreateResponse,
@@ -487,3 +488,68 @@ def get_unread_notification_count(
     """
     user_service = UserService(db)
     return user_service.get_unread_notification_count(current_user["id"])
+
+@router.get("/technicians/active", response_model=List[dict])
+def get_active_technicians(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """
+    Obtiene todos los usuarios técnicos activos (con permiso ID 116).
+    Devuelve solo id, nombre, primer apellido y segundo apellido (opcional).
+    Requiere autenticación y el permiso con ID 118.
+    """
+    # Verificar permiso (ID 118)
+    if not check_permission(current_user, 118):
+        raise HTTPException(status_code=403, detail="No tiene permisos para ver los técnicos activos")
+        
+    try:
+        # Buscar todos los roles que tienen el permiso con ID 116
+        roles_with_perm = db.query(Role).join(
+            role_permission_table, 
+            Role.id == role_permission_table.c.rol_id
+        ).filter(
+            role_permission_table.c.permission_id == 116
+        ).all()
+        
+        if not roles_with_perm:
+            return []
+        
+        # Obtener los IDs de los roles que tienen el permiso
+        role_ids = [role.id for role in roles_with_perm]
+        
+        # Buscar usuarios con esos roles y que estén activos (status_id=1)
+        users = db.query(
+            User.id,
+            User.name,
+            User.first_last_name,
+            User.second_last_name
+        ).join(
+            user_role_table,
+            User.id == user_role_table.c.user_id
+        ).filter(
+            user_role_table.c.rol_id.in_(role_ids),
+            User.status_id == 1
+        ).all()
+        
+        # Convertir los resultados a diccionarios
+        result = []
+        for user in users:
+            user_dict = {
+                "id": user.id,
+                "name": user.name,
+                "first_last_name": user.first_last_name,
+            }
+            # Solo incluir el segundo apellido si no es None
+            if user.second_last_name is not None:
+                user_dict["second_last_name"] = user.second_last_name
+                
+            result.append(user_dict)
+            
+        return result
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener los técnicos activos: {str(e)}"
+        )
