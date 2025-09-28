@@ -31,7 +31,6 @@ from app.users.ws_routes import manager
 from audit_sdk import AuditClient
 from app.users.audit_helpers import user_snapshot, pick_primary_role_and_ids_from_current_user, snapshot_basic_profile, prereg_attempt_meta
 from app.auth.audit_helpers import mask_email
-from app.auth.audit_helpers import get_permission_description
 
 import logging
 
@@ -342,7 +341,6 @@ class UserService:
                 actor_name = current_user.get("name") if current_user else None
                 actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
 
-                permission_description = get_permission_description(self.db, permission_id)
 
                 AuditClient(request).update(
                     object_id=str(db_user.id),
@@ -352,7 +350,6 @@ class UserService:
                     actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=permission_id,
-                    permission_description=permission_description, 
                     meta={
                         "admin_update": bool(admin_update),
                     },
@@ -484,7 +481,6 @@ class UserService:
                 actor_name = current_user.get("name") if current_user else None
                 actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
 
-                permission_description = get_permission_description(self.db, permission_id)
 
                 AuditClient(request).update(
                     object_id=str(user.id),
@@ -494,7 +490,6 @@ class UserService:
                     actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=permission_id,
-                    permission_description=permission_description,
                     meta={
                         "new_status": new_status,
                     },
@@ -745,7 +740,6 @@ class UserService:
                     actor_name = current_user.get("name") if current_user else None
                     actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
 
-                    permission_description = get_permission_description(self.db, permission_id)
 
                     AuditClient(request).emit(
                         object_id=str(user_id),
@@ -755,7 +749,6 @@ class UserService:
                         before=None,
                         after=None,
                         permission_id=permission_id,
-                        permission_description=permission_description,
                         diff=None,
                         meta={
                             "result": "denied",
@@ -779,7 +772,6 @@ class UserService:
                 actor_name = current_user.get("name") if current_user else None
                 actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
 
-                permission_description = get_permission_description(self.db, permission_id)
 
                 AuditClient(request).emit(
                     object_id=str(user.id),
@@ -789,7 +781,6 @@ class UserService:
                     before=None,
                     after=None,
                     permission_id=permission_id,
-                    permission_description=permission_description,
                     diff=None,
                     meta={
                         "result": "success",
@@ -1172,7 +1163,6 @@ class UserService:
                 actor_name = current_user.get("name") if current_user else None
                 actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
 
-                permission_description = get_permission_description(self.db, permission_id)
 
                 AuditClient(request).update(
                     object_id=str(user.id),
@@ -1182,7 +1172,6 @@ class UserService:
                     actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=permission_id,
-                    permission_description=permission_description,
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en update_basic_profile: {e}")
@@ -1238,7 +1227,6 @@ class UserService:
                 actor_name = current_user.get("name") if current_user else None
                 actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
 
-                permission_description = get_permission_description(self.db, permission_id)
                 
                 AuditClient(request).create(
                     object_id=str(db_user.id),
@@ -1247,7 +1235,6 @@ class UserService:
                     actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=permission_id,
-                    permission_description=permission_description,
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en create_user_by_admin: {e}")

@@ -13,7 +13,6 @@ from app.users.models import User
 
 # Auditoría
 from audit_sdk import AuditClient
-from app.auth.audit_helpers import mask_email, build_login_meta
 from app.users.audit_helpers import pick_primary_role_and_ids
 import logging
 
@@ -240,7 +239,6 @@ def login(user_credentials: UserLogin, request: Request, db: Session = Depends(g
                 "actor_role": str(actor_role_to_send),
                 "object_id": object_id,
                 "permission_id": None,
-                "permission_description": None,
                 "ip": ip,
                 "user_agent": ua,
                 "diff": {"changed": {}, "created": {}, "removed": {}},
