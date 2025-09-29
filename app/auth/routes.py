@@ -231,7 +231,7 @@ def login(user_credentials: UserLogin, request: Request, db: Session = Depends(g
                 ip = None
                 ua = None
 
-            # Armar payload de auditoría (compatible con AuditClient.emit)
+            # Auditoría
             audit_payload = {
                 "operation": "LOGIN",
                 "actor_id": str(actor_id_to_send),
@@ -239,6 +239,8 @@ def login(user_credentials: UserLogin, request: Request, db: Session = Depends(g
                 "actor_role": str(actor_role_to_send),
                 "object_id": object_id,
                 "permission_id": None,
+                "module": "users_management",
+                "submodule": "auth",
                 "ip": ip,
                 "user_agent": ua,
                 "diff": {"changed": {}, "created": {}, "removed": {}},
