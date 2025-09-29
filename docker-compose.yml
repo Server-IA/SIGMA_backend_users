@@ -15,9 +15,8 @@ services:
       AUDIT_HTTP_TIMEOUT: "1.5"
     networks:
       - shared_net
-<<<<<<< HEAD
-      volumes:
-        - ".:/app"
+    volumes:
+      - ".:/app"
 networks:
   shared_net:
     external: true
