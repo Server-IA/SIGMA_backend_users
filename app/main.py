@@ -28,7 +28,7 @@ setup_exception_handlers(app)
 
 # **Registrar Rutas**
 app.include_router(roles_router, prefix="/users/roles")
-app.include_router(users_router, prefix="/users/users")
+app.include_router(users_router, prefix="/email")
 app.include_router(auth_router, prefix="/users/auth")
 app.include_router(ws_router)
 

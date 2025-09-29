@@ -345,3 +345,104 @@ class EmailService:
         except Exception as e:
             logger.error(f"Error al enviar correo de activación de pre-registro: {str(e)}")
             return False
+
+    def send_technician_notification_email(self, to_email: str, technician_name: str, scheduled_at: str, details: str) -> bool:
+        """
+        Envía correo de notificación de cita/tarea asignada al técnico
+        """
+        from datetime import datetime
+        
+        # Formatear la fecha para que sea más legible
+        try:
+            # Parsear la fecha ISO (ya viene en formato correcto desde Django)
+            scheduled_datetime = datetime.fromisoformat(scheduled_at)
+            
+            # Mapeo de meses en español
+            meses_es = {
+                1: "enero", 2: "febrero", 3: "marzo", 4: "abril",
+                5: "mayo", 6: "junio", 7: "julio", 8: "agosto",
+                9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre"
+            }
+            
+            # Formatear para mostrar en español
+            day = scheduled_datetime.day
+            month = meses_es[scheduled_datetime.month]
+            year = scheduled_datetime.year
+            hour = scheduled_datetime.strftime("%H:%M")
+            
+            formatted_datetime = f"{day} de {month} de {year} a las {hour}"
+        except Exception as e:
+            print(f"[ERROR] Error formateando fecha: {e}")
+            formatted_datetime = scheduled_at
+        
+        subject = "Nueva Tarea Asignada - Sigma"
+        body = f"""
+        Hola {technician_name},
+
+        Se te ha asignado una nueva tarea en Sigma.
+
+        Fecha y hora programada: {formatted_datetime}
+        
+        Detalles de la tarea:
+        {details}
+
+        Por favor, confirma tu disponibilidad para esta fecha.
+
+        Saludos,
+        Equipo de Sigma
+        """
+        
+        html_body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
+            <div style="background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <h2 style="color: #333; margin-bottom: 20px;">Hola {technician_name},</h2>
+                
+                <p style="color: #555; line-height: 1.6; margin-bottom: 20px;">
+                    Se te ha asignado una nueva tarea en Sigma.
+                </p>
+                
+                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                    <h3 style="color: #007bff; margin-top: 0; margin-bottom: 15px;">📅 Información de la Cita</h3>
+                    <p style="margin: 5px 0; color: #333;"><strong>Fecha y hora:</strong> {formatted_datetime}</p>
+                </div>
+                
+                <div style="background-color: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ffc107;">
+                    <h3 style="color: #856404; margin-top: 0; margin-bottom: 15px;">🔧 Detalles de la Tarea</h3>
+                    <p style="margin: 0; color: #856404; line-height: 1.6;">{details}</p>
+                </div>
+                
+                <p style="color: #666; font-size: 14px; margin-bottom: 30px;">
+                    Por favor, confirma tu disponibilidad para esta fecha.
+                </p>
+                
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+                <p style="color: #999; font-size: 12px; text-align: center;">
+                    Saludos,<br>
+                    Equipo de Sigma
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Crear el mensaje de email
+        em = EmailMessage()
+        em["From"] = self.sender_email
+        em["To"] = to_email
+        em["Subject"] = subject
+        em.set_content(body)
+        em.add_alternative(html_body, subtype="html")
+        
+        # Enviar el email
+        try:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
+                smtp.login(self.sender_email, self.sender_password)
+                smtp.sendmail(self.sender_email, to_email, em.as_string())
+                logger.info(f"Correo de notificación de técnico enviado a {to_email}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Error al enviar correo de notificación de técnico: {str(e)}")
+            return False
