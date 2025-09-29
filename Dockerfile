@@ -4,17 +4,20 @@ FROM python:3.11
 # Establece el directorio de trabajo dentro del contenedor
 WORKDIR /app
 
-# Copia los archivos del backend al contenedor
-COPY . /app/
+# Reqs y vendor
+COPY requirements.txt /app/
+COPY vendor/ /app/vendor/
 
-# Instala las dependencias
+# Instala dependencias
+RUN pip install --no-cache-dir -r requirements.txt
+# Instala dependencias
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Configura PYTHONPATH para que Python pueda encontrar el módulo app
-ENV PYTHONPATH=/app
+# Ahora copia el resto del código
+COPY . /app/
 
-# Expone el puerto 8000 para FastAPI
+# Expone el puerto
 EXPOSE 8001
 
-# Comando de inicio del backend
+# Comando de inicio
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
