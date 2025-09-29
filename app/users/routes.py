@@ -25,7 +25,9 @@ from app.users.schemas import (
     UserEditRequest,
     NotificationList,
     NotificationCreate,
-    MarkReadRequest
+    MarkReadRequest,
+    TechnicianNotificationRequest,
+    TechnicianNotificationResponse
 )
 from app.users.services import UserService
 from app.auth.services import AuthService
@@ -552,4 +554,67 @@ def get_active_technicians(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al obtener los técnicos activos: {str(e)}"
+        )
+
+@router.post("/send-technician-notification", response_model=TechnicianNotificationResponse)
+def send_technician_notification(
+    notification_data: TechnicianNotificationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Envía un correo de notificación al técnico asignado con los detalles de la tarea.
+    """
+    try:
+        # Buscar el técnico por ID
+        technician = db.query(User).filter(User.id == notification_data.assigned_technician).first()
+        
+        # Determinar email y nombre del técnico
+        if technician:
+            # Usuario existe en DB
+            technician_email = technician.email
+            technician_name = f"{technician.name} {technician.first_last_name}"
+            if technician.second_last_name:
+                technician_name += f" {technician.second_last_name}"
+            
+            if not technician_email:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"El técnico {technician.name} no tiene un email configurado en la base de datos"
+                )
+        else:
+            # Usuario no existe en DB - error porque requerimos que esté registrado
+            raise HTTPException(
+                status_code=404,
+                detail=f"El técnico con ID {notification_data.assigned_technician} no existe en la base de datos"
+            )
+        
+        # Enviar el correo
+        from app.email_service import EmailService
+        email_service = EmailService()
+        
+        email_sent = email_service.send_technician_notification_email(
+            to_email=technician_email,
+            technician_name=technician_name,
+            scheduled_at=notification_data.scheduled_at,
+            details=notification_data.details
+        )
+        
+        if email_sent:
+            return TechnicianNotificationResponse(
+                success=True,
+                message=f"Correo de notificación enviado exitosamente a {technician_name}",
+                technician_email=technician_email
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Error al enviar el correo de notificación"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al procesar la notificación: {str(e)}"
         )

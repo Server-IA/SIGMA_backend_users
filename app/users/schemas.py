@@ -289,3 +289,26 @@ class MarkReadRequest(BaseModel):
     """Schema for marking notifications as read"""
     notification_ids: Optional[List[int]] = None
     mark_all: bool = False
+
+class TechnicianNotificationRequest(BaseModel):
+    """Request schema for sending technician notification email - El técnico debe estar registrado en la base de datos"""
+    scheduled_at: str = Field(..., description="Fecha y hora programada en formato ISO 8601")
+    details: str = Field(..., min_length=1, description="Detalles de la tarea asignada")
+    assigned_technician: int = Field(..., description="ID del técnico asignado (debe existir en la base de datos)")
+    technician_email: Optional[str] = Field(None, description="Email del técnico (opcional, se obtiene de la BD si no se proporciona)")
+    technician_name: Optional[str] = Field(None, description="Nombre del técnico (opcional, se obtiene de la BD si no se proporciona)")
+    
+    @validator('scheduled_at')
+    def validate_scheduled_at(cls, v):
+        try:
+            # Validar que sea una fecha ISO válida
+            datetime.fromisoformat(v.replace('Z', '+00:00'))
+            return v
+        except ValueError:
+            raise ValueError("Formato de fecha inválido. Use formato ISO 8601 (ej: 2025-12-03T23:30:32Z)")
+
+class TechnicianNotificationResponse(BaseModel):
+    """Response schema for technician notification email"""
+    success: bool
+    message: str
+    technician_email: Optional[str] = None
