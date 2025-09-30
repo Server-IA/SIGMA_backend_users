@@ -27,10 +27,11 @@ import requests
 from dotenv import load_dotenv
 from app.users.ws_routes import manager
 
-# Auditoría (SDK)
+# Auditoría 
 from audit_sdk import AuditClient
 from app.users.audit_helpers import user_snapshot, pick_primary_role_and_ids_from_current_user, snapshot_basic_profile, prereg_attempt_meta
 from app.auth.audit_helpers import mask_email
+
 import logging
 
 load_dotenv()
@@ -337,23 +338,22 @@ class UserService:
             # Auditoría
             try:
                 actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
-                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+                actor_name = current_user.get("name") if current_user else None
+                actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+
 
                 AuditClient(request).update(
-                    module="users_management",
-                    object_type="user",
                     object_id=str(db_user.id),
-                    submodule="users",
-                    feature="update_user",
                     before=before,
                     after=after,
                     actor_id=actor_id,
+                    actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=permission_id,
+                    module="users_management",
+                    submodule="users",
                     meta={
-                        "source": "users.update_user",
                         "admin_update": bool(admin_update),
-                        "actor_roles_ids": actor_role_ids
                     },
                 )
             except Exception as e:
@@ -480,24 +480,22 @@ class UserService:
             # Auditoría
             try:
                 actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
-                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+                actor_name = current_user.get("name") if current_user else None
+                actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
 
 
                 AuditClient(request).update(
-                    module="users_management",
-                    object_type="user_status",
                     object_id=str(user.id),
-                    submodule="users",
-                    feature="change_status",
                     before=before,
                     after=after,
                     actor_id=actor_id,
+                    actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=permission_id,
+                    module="users_management",
+                    submodule="users",
                     meta={
-                        "source": "users.change_user_status",
                         "new_status": new_status,
-                        "actor_roles_ids": actor_role_ids,
                     },
                 )
             except Exception as e:
@@ -576,7 +574,6 @@ class UserService:
                         "expiration": expiration_time.isoformat(),
                         "token_redacted": True
                     },
-                    meta={"source": "auth.generate_reset_token"},
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en generate_reset_token: {e}")
@@ -663,7 +660,6 @@ class UserService:
                     before=before,
                     after=after,
                     meta={
-                        "source": "auth.update_password_token", 
                         "flow": "password_reset_token", 
                         "result": "success"
                     }
@@ -745,25 +741,24 @@ class UserService:
                 # Auditar intento fallido 
                 try:
                     actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
-                    actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+                    actor_name = current_user.get("name") if current_user else None
+                    actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+
+
                     AuditClient(request).emit(
-                        operation="ACCESS",  # o "DENY"
-                        module="users_management",
-                        submodule="users",
-                        feature="change_user_password",
-                        object_type="user",
                         object_id=str(user_id),
                         actor_id=actor_id,
+                        actor_name=actor_name,
                         actor_role=actor_role_name,
                         before=None,
                         after=None,
                         permission_id=permission_id,
+                        module="users_management",
+                        submodule="users",
                         diff=None,
                         meta={
-                            "source": "users.change_user_password",
                             "result": "denied",
                             "reason": "wrong_current_password",
-                            "actor_roles_ids": actor_role_ids,
                         },
                     )
                 except Exception:
@@ -780,25 +775,22 @@ class UserService:
             # 5) Auditoría intento existoso
             try:
                 actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
-                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+                actor_name = current_user.get("name") if current_user else None
+                actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+
+
                 AuditClient(request).emit(
-                    operation="UPDATE",
-                    module="users_management",
-                    submodule="users",
-                    feature="change_user_password",
-                    object_type="user",
                     object_id=str(user.id),
                     actor_id=actor_id,
+                    actor_name=actor_name,
                     actor_role=actor_role_name,
                     before=None,
                     after=None,
                     permission_id=permission_id,
                     diff=None,
                     meta={
-                        "source": "users.change_user_password",
                         "result": "success",
                         "changed_credentials": ["password"],
-                        "actor_roles_ids": actor_role_ids,
                     },
                 )
             except Exception as e:
@@ -830,7 +822,6 @@ class UserService:
         document_type_id: int,
         document_number: str,
         date_issuance_document: datetime,   # si tu schema manda "date", puedes usar date en vez de datetime
-        request: Request
     ) -> PreRegisterResponse:
         try:
             doc_number_int = int(document_number)
@@ -878,28 +869,6 @@ class UserService:
             self.db.add(pre_register_token)
             self.db.commit()
 
-            # Auditoría 
-            try:
-                AuditClient(request).create(
-                    module="users_management",
-                    object_type="pre_register",
-                    object_id=str(user.id),
-                    submodule="users",
-                    feature="validate_for_pre_register",
-                    after={
-                        "user_id": user.id,
-                        "token_hint": f"{token[:8]}…",
-                        "expires_at": expiration.isoformat() + "Z",  # ISO+Z
-                    },
-                    meta={
-                        "source": "users.validate_for_pre_register",
-                        "document_type_id": document_type_id,
-                        "doc_last4": str(doc_number_int)[-4:]
-                    },
-                )
-            except Exception as e:
-                logging.warning(f"No se pudo emitir auditoría en validate_for_pre_register: {e}")
-
             return PreRegisterResponse(
                 success=True,
                 message="Validación exitosa. Complete su registro con email y contraseña.",
@@ -919,7 +888,7 @@ class UserService:
             self.db.rollback()
             raise HTTPException(status_code=500, detail=f"Error inesperado: {str(e)}")
 
-    async def complete_pre_register(self, token: str, email: str, password: str, request: Request) -> PreRegisterResponse:
+    async def complete_pre_register(self, token: str, email: str, password: str) -> PreRegisterResponse:
         try:
             pre_register_token = self.db.query(PreRegisterToken).filter(
                 PreRegisterToken.token == token,
@@ -942,7 +911,6 @@ class UserService:
             if existing_email:
                 raise HTTPException(status_code=400, detail="Este correo electrónico ya está registrado. Por favor utilice otro.")
 
-            before = user_snapshot(user)
 
             salt, hash_password = self.hash_password(password)
             user.email = email
@@ -965,28 +933,6 @@ class UserService:
             self.db.add(new_activation_token)
             self.db.commit()
 
-            # Auditoría
-            try:
-                after = user_snapshot(user)
-                AuditClient(request).update(
-                    module="users_management",
-                    object_type="user",
-                    submodule="users",
-                    feature="complete_pre_register",
-                    object_id=str(user.id),
-                    before=before,
-                    after=after,
-                    actor_id=None,  
-                    meta={
-                        "source": "users.complete_pre_register",
-                        "token_hint": f"{token[:8]}…",
-                        "email_domain": email.split("@")[-1] if "@" in email else None,
-                    },
-                )
-            except Exception as e:
-                logging.warning(
-                    f"No se pudo emitir auditoría en complete_pre_register: {e}"
-                )
 
             # Enviar correo electrónico de activación SOLO para pre-registro
             try:
@@ -1067,16 +1013,11 @@ class UserService:
             # --- AUDITORÍA (éxito) 
             try:
                 AuditClient(request).update(
-                    module="users_management",
-                    object_type="user",
                     object_id=str(user.id),
-                    submodule="auth",
-                    feature="activate_account",
                     actor_id=str(user.id),  
                     before=before,
                     after=user_snapshot(user),
                     meta={
-                        "source": "auth.activate_account",
                         "flow": "account_activation_token",
                         "result": "success",
                         **({"token_hint": token_hint} if token_hint else {}),
@@ -1123,7 +1064,6 @@ class UserService:
             if result != "success":
                 try:
                     meta = {
-                        "source": "auth.activate_account",
                         "flow": "account_activation_token",
                         "result": result,
                     }
@@ -1133,13 +1073,8 @@ class UserService:
                         meta["token_hint"] = token_hint
 
                     AuditClient(request).emit(
-                        operation="UPDATE",
-                        module="users_management",
-                        object_type="user",
                         object_id=object_id,   
-                        submodule="auth",
-                        feature="activate_account",
-                        actor_id=None,         
+                        actor_id=object_id,         
                         meta=meta,
                     )
                 except Exception as e:
@@ -1238,23 +1173,20 @@ class UserService:
             # Auditoría
             try:
                 actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
-                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+                actor_name = current_user.get("name") if current_user else None
+                actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+
 
                 AuditClient(request).update(
-                    module="users_management",
-                    object_type="user",
                     object_id=str(user.id),
-                    submodule="users",
-                    feature="update_basic_profile",
                     before=before,
                     after=after,
                     actor_id=actor_id,
+                    actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=permission_id,
-                    meta={
-                        "source": "users.update_basic_profile",
-                        "actor_roles_ids": actor_role_ids,
-                    },
+                    module="users_management",
+                    submodule="users",
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en update_basic_profile: {e}")
@@ -1304,22 +1236,19 @@ class UserService:
             # Auditoría 
             try:
                 actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
-                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+                actor_name = current_user.get("name") if current_user else None
+                actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+
                 
                 AuditClient(request).create(
-                    module="users_management",
-                    object_type="user",
                     object_id=str(db_user.id),
-                    submodule="users",
-                    feature="create_user_by_admin",
                     after=user_snapshot(db_user),
                     actor_id=actor_id,
+                    actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=permission_id,
-                    meta={
-                        "source": "users.create_user_by_admin",
-                        "actor_roles_ids": actor_role_ids,
-                    },
+                    module="users_management",
+                    submodule="users",
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en create_user_by_admin: {e}")

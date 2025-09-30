@@ -67,6 +67,11 @@ Nombre: users.notifications.view
 Descripción: Ver notificaciones de usuario
 Categoría: Usuarios
 
+ID: 118
+Nombre: users.active_technicians
+Descripción: Lista los tecnicos activos
+Categoría: Usuarios
+
 CATEGORÍA: ROLES
 ----------------
 ID: 13
@@ -157,3 +162,4 @@ POST   /users/users/{user_id}/change-password     → users.password.change (ID:
 GET    /users/users/{user_id}                     → users.view (ID: 2)
 GET    /users/users/                              → users.view (ID: 2)
 GET    /users/users/notifications/                → users.notifications.view (ID: 12)
+GET    /users/technicians/active                  → users.active_technicians (ID: 118)

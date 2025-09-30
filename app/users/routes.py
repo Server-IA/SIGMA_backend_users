@@ -6,7 +6,8 @@ from datetime import datetime
 from app.roles.models import Role
 from app.database import get_db
 from app.users import schemas
-from app.users.models import ChangeUserStatusRequest, Notification
+from app.users.models import ChangeUserStatusRequest, Notification, User
+from app.roles.models import role_permission_table, user_role_table    
 from app.users.schemas import (
     AdminUserCreateRequest,
     AdminUserCreateResponse,
@@ -24,7 +25,9 @@ from app.users.schemas import (
     UserEditRequest,
     NotificationList,
     NotificationCreate,
-    MarkReadRequest
+    MarkReadRequest,
+    TechnicianNotificationRequest,
+    TechnicianNotificationResponse
 )
 from app.users.services import UserService
 from app.auth.services import AuthService
@@ -50,7 +53,7 @@ def check_permission(current_user: dict, required_permission_id: int):
 @router.post("/pre-register/validate", response_model=PreRegisterResponse)
 async def validate_document_for_pre_register(
     body: PreRegisterValidationRequest,
-    request: Request,db: Session = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     Valida que el documento exista y esté asociado a un usuario que aún no ha completado el pre-registro.
@@ -60,8 +63,7 @@ async def validate_document_for_pre_register(
         return await user_service.validate_for_pre_register(
             document_type_id=body.document_type_id,
             document_number=body.document_number,
-            date_issuance_document=body.date_issuance_document,
-            request=request
+            date_issuance_document=body.date_issuance_document
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -73,7 +75,6 @@ async def validate_document_for_pre_register(
 @router.post("/pre-register/complete", response_model=PreRegisterResponse)
 async def complete_pre_register(
     body: PreRegisterCompleteRequest,
-    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -84,8 +85,7 @@ async def complete_pre_register(
         return await user_service.complete_pre_register(
             token=body.token,
             email=body.email,
-            password=body.password,
-            request=request
+            password=body.password
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -487,3 +487,131 @@ def get_unread_notification_count(
     """
     user_service = UserService(db)
     return user_service.get_unread_notification_count(current_user["id"])
+
+@router.get("/technicians/active", response_model=List[dict])
+def get_active_technicians(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """
+    Obtiene todos los usuarios técnicos activos (con permiso ID 116).
+    Devuelve solo id, nombre, primer apellido y segundo apellido (opcional).
+    Requiere autenticación y el permiso con ID 118.
+    """
+    # Verificar permiso (ID 118)
+    if not check_permission(current_user, 118):
+        raise HTTPException(status_code=403, detail="No tiene permisos para ver los técnicos activos")
+        
+    try:
+        # Buscar todos los roles que tienen el permiso con ID 116
+        roles_with_perm = db.query(Role).join(
+            role_permission_table, 
+            Role.id == role_permission_table.c.rol_id
+        ).filter(
+            role_permission_table.c.permission_id == 116
+        ).all()
+        
+        if not roles_with_perm:
+            return []
+        
+        # Obtener los IDs de los roles que tienen el permiso
+        role_ids = [role.id for role in roles_with_perm]
+        
+        # Buscar usuarios con esos roles y que estén activos (status_id=1)
+        users = db.query(
+            User.id,
+            User.name,
+            User.first_last_name,
+            User.second_last_name
+        ).join(
+            user_role_table,
+            User.id == user_role_table.c.user_id
+        ).filter(
+            user_role_table.c.rol_id.in_(role_ids),
+            User.status_id == 1
+        ).all()
+        
+        # Convertir los resultados a diccionarios
+        result = []
+        for user in users:
+            user_dict = {
+                "id": user.id,
+                "name": user.name,
+                "first_last_name": user.first_last_name,
+            }
+            # Solo incluir el segundo apellido si no es None
+            if user.second_last_name is not None:
+                user_dict["second_last_name"] = user.second_last_name
+                
+            result.append(user_dict)
+            
+        return result
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener los técnicos activos: {str(e)}"
+        )
+
+@router.post("/send-technician-notification", response_model=TechnicianNotificationResponse)
+def send_technician_notification(
+    notification_data: TechnicianNotificationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Envía un correo de notificación al técnico asignado con los detalles de la tarea.
+    """
+    try:
+        # Buscar el técnico por ID
+        technician = db.query(User).filter(User.id == notification_data.assigned_technician).first()
+        
+        # Determinar email y nombre del técnico
+        if technician:
+            # Usuario existe en DB
+            technician_email = technician.email
+            technician_name = f"{technician.name} {technician.first_last_name}"
+            if technician.second_last_name:
+                technician_name += f" {technician.second_last_name}"
+            
+            if not technician_email:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"El técnico {technician.name} no tiene un email configurado en la base de datos"
+                )
+        else:
+            # Usuario no existe en DB - error porque requerimos que esté registrado
+            raise HTTPException(
+                status_code=404,
+                detail=f"El técnico con ID {notification_data.assigned_technician} no existe en la base de datos"
+            )
+        
+        # Enviar el correo
+        from app.email_service import EmailService
+        email_service = EmailService()
+        
+        email_sent = email_service.send_technician_notification_email(
+            to_email=technician_email,
+            technician_name=technician_name,
+            scheduled_at=notification_data.scheduled_at,
+            details=notification_data.details
+        )
+        
+        if email_sent:
+            return TechnicianNotificationResponse(
+                success=True,
+                message=f"Correo de notificación enviado exitosamente a {technician_name}",
+                technician_email=technician_email
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Error al enviar el correo de notificación"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al procesar la notificación: {str(e)}"
+        )
