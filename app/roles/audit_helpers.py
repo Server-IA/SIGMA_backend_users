@@ -1,25 +1,48 @@
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 def role_snapshot(role_obj) -> Dict[str, Any]:
+    """
+    Snapshot mínimo para diffs:
+    - Evita campos grandes (descriptions largas)
+    - Ordena permisos para estabilidad del diff
+    """
+    perms: List[int] = []
+    perms_attr = getattr(role_obj, "permissions", None)
+    if perms_attr:
+        # Permite tanto lista como related manager/queryset
+        try:
+            perms = [int(getattr(p, "id", p)) for p in perms_attr]
+        except TypeError:
+            # related manager (Django) -> iterar
+            perms = [int(getattr(p, "id", p)) for p in perms_attr.all()]
     return {
-        "id": role_obj.id,
-        "name": role_obj.name,
-        "description": role_obj.description,
-        "status": role_obj.status,
-        "permissions": sorted([p.id for p in getattr(role_obj, "permissions", [])]),
+        "id": getattr(role_obj, "id", None),
+        "name": getattr(role_obj, "name", None),
+        "description": getattr(role_obj, "description", None),  # ← AÑADIDO
+        "status": getattr(role_obj, "status", None),
+        "permissions": sorted([p for p in perms if p is not None]),
     }
 
-def user_roles_snapshot(user_obj) -> dict:
-    roles = getattr(user_obj, "roles", []) or []
+def user_roles_snapshot(user_obj) -> Dict[str, Any]:
+    roles = getattr(user_obj, "roles", None)
+    ids: List[int] = []
+    if roles:
+        try:
+            ids = [int(getattr(r, "id", r)) for r in roles]
+        except TypeError:
+            ids = [int(getattr(r, "id", r)) for r in roles.all()]
     return {
         "user_id": getattr(user_obj, "id", None),
-        "roles": sorted([getattr(r, "id", None) for r in roles if getattr(r, "id", None) is not None]),
+        "roles": sorted([i for i in ids if i is not None]),
     }
 
-def permission_snapshot(perm_obj) -> dict:
+def permission_snapshot(perm_obj) -> Dict[str, Any]:
+    """
+    Manténlo mínimo; si ‘category’ no es requerida para auditoría, omítela.
+    """
     return {
-        "id": perm_obj.id,
-        "name": perm_obj.name,
-        "description": perm_obj.description,
-        "category": perm_obj.category,
+        "id": getattr(perm_obj, "id", None),
+        "name": getattr(perm_obj, "name", None),
+        "category": getattr(perm_obj, "category", None),  
     }
+
