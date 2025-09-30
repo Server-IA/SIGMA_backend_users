@@ -10,10 +10,11 @@ from app.users.services import UserService
 import unicodedata, re
 
 # Auditoría
-from audit_sdk import AuditClient
+from audit_sdk import AuditClient, compute_diff
 from app.roles.audit_helpers import role_snapshot, user_roles_snapshot, permission_snapshot
 from app.users.audit_helpers import pick_primary_role_and_ids_from_current_user
 import logging
+
 def _canonical(s: str) -> str:
     # Normaliza Unicode, recorta y colapsa espacios, y hace case-insensitive con casefold
     s = unicodedata.normalize("NFKC", s)
@@ -49,25 +50,22 @@ class PermissionService:
             # Auditoría
             try:
                 actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
-                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+                actor_name = current_user.get("name") if current_user else None
+                actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+
 
                 AuditClient(request).create(
-                    module="users_management",
-                    object_type="permission",
                     object_id=str(db_permission.id),
-                    submodule="permissions",
-                    feature="create",
                     after=permission_snapshot(db_permission),
                     actor_id=actor_id,
+                    actor_name=actor_name,
                     actor_role=actor_role_name,
-                    permission_id=str(permission_id),
-                    meta={
-                        "source": "permissions.create_permission",
-                        "actor_roles_ids": actor_role_ids,
-                    },
+                    permission_id=permission_id, 
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
-                logging.warning(f"No se pudo emitir auditoría en create_permission: {e}")
+                logging.warning("El servicio de auditoría ha fallado en create_permission: %s", e)
 
             return schemas.SimpleResponse(success=True, data="El permiso se ha creado correctamente")
         except IntegrityError:
@@ -132,26 +130,22 @@ class RoleService:
             self.db.refresh(db_role)
             try:
                 actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
-                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user or {})
+                actor_name = current_user.get("name") if current_user else None
+                actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+
 
                 AuditClient(request).create(
-                    module="users_management",
-                    object_type="role",
                     object_id=str(db_role.id),
-                    submodule="roles",
-                    feature="create",
                     after=role_snapshot(db_role),
                     actor_id=actor_id,
+                    actor_name=actor_name,
                     actor_role=actor_role_name,
-                    permission_id=str(permission_id),
-                    meta={
-                        "source": "roles.create_role",
-                        "actor_roles_ids": actor_role_ids,
-                    },
+                    permission_id=permission_id, 
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
-                # No interrumpir la lógica de negocio si falla auditoría
-                logging.warning(f"Audit emit failed on create_role: {e}")
+                logging.warning("El servicio de auditoría ha fallado en create_role: %s", e)
 
             user_service = UserService(self.db)
             users_with_permission_25 = (
@@ -237,28 +231,24 @@ class RoleService:
             # Auditoría
             try:
                 actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
-                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+                actor_name = current_user.get("name") if current_user else None
+                actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+
 
                 AuditClient(request).update(
-                    module="users_management",
-                    object_type="role",
                     object_id=str(db_role.id),
-                    submodule="roles",
-                    feature="edit",
-                    before=before,
-                    after=after,
+                    before=before,                    
+                    after=role_snapshot(db_role),
                     actor_id=actor_id,
+                    actor_name=actor_name,
                     actor_role=actor_role_name,
-                    permission_id=str(permission_id),
-                    meta={
-                        "source": "roles.edit_role",
-                        "actor_roles_ids": actor_role_ids,
-                    },
+                    permission_id=permission_id,
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
-                logging.warning("Audit emit failed on edit_role: %s", e)
+                logging.warning("El servicio de auditoría ha fallado en create_role: %s", e)
 
-            # 🔔 Notificar a usuarios con permiso ID 25
             user_service = UserService(self.db)
             users_with_permission_25 = (
                 self.db.query(User)
@@ -434,23 +424,20 @@ class RoleService:
             after = role_snapshot(role)
             try:
                 actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
-                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+                actor_name = current_user.get("name") if current_user else None
+                actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+
 
                 AuditClient(request).update(
-                    module="users_management",
-                    object_type="role",
                     object_id=str(role.id),
-                    submodule="roles",
-                    feature="change_status",
                     before=before,
                     after=after,
                     actor_id=actor_id,
+                    actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=str(permission_id),
-                    meta={
-                        "source": "roles.change_role_status",
-                        "actor_roles_ids": actor_role_ids,
-                    },
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en change_role_status: {e}")
@@ -509,23 +496,20 @@ class RoleService:
             # --- Auditoría ---
             try:
                 actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
-                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+                actor_name = current_user.get("name") if current_user else None
+                actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+
 
                 AuditClient(request).update(
-                    module="users management",
-                    object_type="role",
                     object_id=str(role.id),
-                    submodule="roles",
-                    feature="update_role_permissions",
                     before=before,
                     after=after,
                     actor_id=actor_id,
+                    actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=str(permission_id),
-                    meta={
-                        "source": "roles.update_role_permissions",
-                        "actor_roles_ids": actor_role_ids,
-                    },
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en update_role_permissions: {e}")
@@ -563,22 +547,19 @@ class RoleService:
             # Auditoría
             try:
                 actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
-                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+                actor_name = current_user.get("name") if current_user else None
+                actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+
 
                 AuditClient(request).delete(
-                    module="users_management",
-                    object_type="role",
                     object_id=str(role_id),
-                    submodule="roles",
-                    feature="delete",
                     before=before,
                     actor_id=actor_id,
+                    actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=str(permission_id),
-                    meta={
-                        "source": "roles.delete_role",
-                        "actor_roles_ids": actor_role_ids,
-                    },
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en delete_role: {e}")
@@ -623,23 +604,20 @@ class UserRoleService:
             # Auditoría
             try:
                 actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
-                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+                actor_name = current_user.get("name") if current_user else None
+                actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+
 
                 AuditClient(request).update(
-                    module="users_management",
-                    object_type="user_roles",
                     object_id=str(user.id),
-                    submodule="roles",
-                    feature="assign_role",
                     before=before,
                     after=after,
                     actor_id=actor_id,
+                    actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=str(permission_id),
-                    meta={
-                        "source": "roles.assign_role_to_user", "added": [role.id],
-                        "actor_roles_ids": actor_role_ids,
-                    },
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
                 logging.warning(f"Auditoría falló en assign_role_to_user: {e}")
@@ -676,22 +654,20 @@ class UserRoleService:
             # Auditoría
             try:
                 actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
-                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+                actor_name = current_user.get("name") if current_user else None
+                actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+
 
                 AuditClient(request).update(
-                    module="users_management",
-                    object_type="user_roles",
                     object_id=str(user.id),
-                    submodule="roles",
-                    feature="revoke_role",
                     before=before,
                     after=after,
                     actor_id=actor_id,
+                    actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=str(permission_id),
-                    meta={
-                        "source": "roles.revoke_role_from_user", "removed": [role.id],
-                        "actor_roles_ids": actor_role_ids},
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
                 logging.warning(f"Auditoría falló en revoke_role_from_user: {e}")
@@ -740,23 +716,20 @@ class UserRoleService:
             # Auditoría
             try:
                 actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
-                actor_role_name, actor_role_ids = pick_primary_role_and_ids_from_current_user(current_user)
+                actor_name = current_user.get("name") if current_user else None
+                actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+
 
                 AuditClient(request).update(
-                    module="users_management",
-                    object_type="user_roles",
                     object_id=str(user.id),
-                    submodule="roles",
-                    feature="update_user_roles",
                     before=before,
                     after=after,
                     actor_id=actor_id,
+                    actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=str(permission_id),
-                    meta={
-                        "source": "users.update_user_roles",
-                        "actor_roles_ids": actor_role_ids,
-                    },
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en update_user_roles: {e}")
