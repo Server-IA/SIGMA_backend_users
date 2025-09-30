@@ -350,6 +350,8 @@ class UserService:
                     actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=permission_id,
+                    module="users_management",
+                    submodule="users",
                     meta={
                         "admin_update": bool(admin_update),
                     },
@@ -490,6 +492,8 @@ class UserService:
                     actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=permission_id,
+                    module="users_management",
+                    submodule="users",
                     meta={
                         "new_status": new_status,
                     },
@@ -749,6 +753,8 @@ class UserService:
                         before=None,
                         after=None,
                         permission_id=permission_id,
+                        module="users_management",
+                        submodule="users",
                         diff=None,
                         meta={
                             "result": "denied",
@@ -1172,6 +1178,8 @@ class UserService:
                     actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=permission_id,
+                    module="users_management",
+                    submodule="users",
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en update_basic_profile: {e}")
@@ -1235,6 +1243,8 @@ class UserService:
                     actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=permission_id,
+                    module="users_management",
+                    submodule="users",
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en create_user_by_admin: {e}")

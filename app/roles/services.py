@@ -61,6 +61,8 @@ class PermissionService:
                     actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=permission_id, 
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
                 logging.warning("El servicio de auditoría ha fallado en create_permission: %s", e)
@@ -139,6 +141,8 @@ class RoleService:
                     actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=permission_id, 
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
                 logging.warning("El servicio de auditoría ha fallado en create_role: %s", e)
@@ -239,6 +243,8 @@ class RoleService:
                     actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=permission_id,
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
                 logging.warning("El servicio de auditoría ha fallado en create_role: %s", e)
@@ -430,6 +436,8 @@ class RoleService:
                     actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=str(permission_id),
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en change_role_status: {e}")
@@ -500,6 +508,8 @@ class RoleService:
                     actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=str(permission_id),
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en update_role_permissions: {e}")
@@ -548,6 +558,8 @@ class RoleService:
                     actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=str(permission_id),
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en delete_role: {e}")
@@ -604,6 +616,8 @@ class UserRoleService:
                     actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=str(permission_id),
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
                 logging.warning(f"Auditoría falló en assign_role_to_user: {e}")
@@ -652,6 +666,8 @@ class UserRoleService:
                     actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=str(permission_id),
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
                 logging.warning(f"Auditoría falló en revoke_role_from_user: {e}")
@@ -712,6 +728,8 @@ class UserRoleService:
                     actor_name=actor_name,
                     actor_role=actor_role_name,
                     permission_id=str(permission_id),
+                    module="users_management",
+                    submodule="roles",
                 )
             except Exception as e:
                 logging.warning(f"No se pudo emitir auditoría en update_user_roles: {e}")
