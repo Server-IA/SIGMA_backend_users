@@ -390,6 +390,24 @@ def change_password(
         current_user=current_user,
         permission_id=permission_id
     )
+
+@router.get("/basic-user-list")
+def list_users_basic(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """
+    Lista básica de usuarios con: id, nombre, primer y segundo apellido,
+    número de identificación, tipo de documento y correo.
+    """
+    try:
+        user_service = UserService(db)
+        return user_service.list_users_basic()
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al listar los usuarios: {str(e)}")
+
 @router.get("/{user_id}")
 def list_user(
     user_id: int, 
