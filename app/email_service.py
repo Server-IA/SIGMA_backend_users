@@ -348,7 +348,7 @@ class EmailService:
 
     def send_technician_notification_email(self, to_email: str, technician_name: str, scheduled_at: str, details: str) -> bool:
         """
-        Envía correo de notificación de cita/tarea asignada al técnico
+        Envía correo de notificación de programación de mantenimiento asignada al técnico
         """
         from datetime import datetime
         
@@ -375,18 +375,16 @@ class EmailService:
             print(f"[ERROR] Error formateando fecha: {e}")
             formatted_datetime = scheduled_at
         
-        subject = "Nueva Tarea Asignada - Sigma"
+        subject = "Nueva Programación de Mantenimiento Asignada - Sigma"
         body = f"""
         Hola {technician_name},
 
-        Se te ha asignado una nueva tarea en Sigma.
+        Se te ha asignado una nueva programación de mantenimiento en Sigma.
 
         Fecha y hora programada: {formatted_datetime}
         
-        Detalles de la tarea:
+        Detalles de la programación:
         {details}
-
-        Por favor, confirma tu disponibilidad para esta fecha.
 
         Saludos,
         Equipo de Sigma
@@ -399,7 +397,7 @@ class EmailService:
                 <h2 style="color: #333; margin-bottom: 20px;">Hola {technician_name},</h2>
                 
                 <p style="color: #555; line-height: 1.6; margin-bottom: 20px;">
-                    Se te ha asignado una nueva tarea en Sigma.
+                    Se te ha asignado una nueva programación de mantenimiento en Sigma.
                 </p>
                 
                 <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -408,7 +406,7 @@ class EmailService:
                 </div>
                 
                 <div style="background-color: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ffc107;">
-                    <h3 style="color: #856404; margin-top: 0; margin-bottom: 15px;">🔧 Detalles de la Tarea</h3>
+                    <h3 style="color: #856404; margin-top: 0; margin-bottom: 15px;">🔧 Detalles de la Programación</h3>
                     <p style="margin: 0; color: #856404; line-height: 1.6;">{details}</p>
                 </div>
                 
