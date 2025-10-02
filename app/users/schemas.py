@@ -312,3 +312,7 @@ class TechnicianNotificationResponse(BaseModel):
     success: bool
     message: str
     technician_email: Optional[str] = None
+
+class BasicUserIdsRequest(BaseModel):
+    """Solicitud para listar usuarios básicos por una lista de IDs"""
+    ids: List[int]
