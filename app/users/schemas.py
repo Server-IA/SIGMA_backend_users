@@ -293,7 +293,7 @@ class MarkReadRequest(BaseModel):
 class TechnicianNotificationRequest(BaseModel):
     """Request schema for sending technician notification email - El técnico debe estar registrado en la base de datos"""
     scheduled_at: str = Field(..., description="Fecha y hora programada en formato ISO 8601")
-    details: str = Field(..., min_length=1, description="Detalles de la tarea asignada")
+    details: str = Field(..., min_length=1, description="Detalles de la programación asignada")
     assigned_technician: int = Field(..., description="ID del técnico asignado (debe existir en la base de datos)")
     technician_email: Optional[str] = Field(None, description="Email del técnico (opcional, se obtiene de la BD si no se proporciona)")
     technician_name: Optional[str] = Field(None, description="Nombre del técnico (opcional, se obtiene de la BD si no se proporciona)")
