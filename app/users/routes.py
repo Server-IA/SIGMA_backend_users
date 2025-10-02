@@ -577,7 +577,7 @@ def send_technician_notification(
     db: Session = Depends(get_db)
 ):
     """
-    Envía un correo de notificación al técnico asignado con los detalles de la tarea.
+    Envía un correo de notificación al técnico asignado con los detalles de la programación.
     """
     try:
         # Buscar el técnico por ID
