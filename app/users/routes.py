@@ -390,26 +390,25 @@ def change_password(
         current_user=current_user,
         permission_id=permission_id
     )
-@router.get("/{user_id}")
-def list_user(
-    user_id: int, 
+
+@router.post("/basic-user-list/by-ids")
+def list_users_basic_by_ids(
+    body: schemas.BasicUserIdsRequest,
     db: Session = Depends(get_db),
     current_user: dict = Depends(AuthService.get_current_user)
 ):
     """
-    Obtiene información detallada de un usuario.
+    Lista básica de usuarios filtrando por una lista de IDs.
+    Devuelve: id, name, first_last_name, second_last_name, document_number,
+    type_document (ID), type_document_name (nombre) y email.
     """
-    # Verificar permiso o si es administrador (user.view -> ID 5)
-    if not check_permission(current_user, 5):
-        raise HTTPException(status_code=403, detail="No tiene permisos para ver usuarios")
-    
     try:
         user_service = UserService(db)
-        return user_service.list_user(user_id)
+        return user_service.list_users_basic_by_ids(body.ids)
     except HTTPException as e:
         raise e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al obtener el usuario: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al listar usuarios por IDs: {str(e)}")
 
 @router.get("/")
 def list_users(

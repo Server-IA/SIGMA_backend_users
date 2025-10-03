@@ -459,6 +459,60 @@ class UserService:
                 }
             })
 
+    def list_users_basic_by_ids(self, ids: List[int]):
+        """Devuelve lista básica de usuarios para los IDs dados.
+        Campos: id, name, first_last_name, second_last_name, document_number,
+        type_document (ID), type_document_name (nombre) y email.
+        """
+        try:
+            if not ids:
+                raise HTTPException(status_code=400, detail="La lista de IDs no puede estar vacía")
+
+            rows = (
+                self.db.query(
+                    User.id,
+                    User.name,
+                    User.first_last_name,
+                    User.second_last_name,
+                    User.document_number,
+                    User.type_document_id,
+                    TypeDocument.name.label("type_document_name"),
+                    User.email,
+                )
+                .outerjoin(User.type_document)
+                .filter(User.id.in_(ids))
+                .all()
+            )
+
+            if not rows:
+                raise HTTPException(status_code=404, detail="No se encontraron usuarios para los IDs proporcionados.")
+
+            users_list = []
+            for r in rows:
+                user_dict = {
+                    "id": r.id,
+                    "name": r.name,
+                    "first_last_name": r.first_last_name,
+                    "second_last_name": r.second_last_name,
+                    "document_number": r.document_number,
+                    "type_document": r.type_document_id,
+                    "type_document_name": r.type_document_name,
+                    "email": r.email,
+                }
+                users_list.append(user_dict)
+
+            return jsonable_encoder({"success": True, "data": users_list})
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail={
+                "success": False,
+                "data": {
+                    "title": "Error de servidor",
+                    "message": str(e),
+                }
+            })
+
     def change_user_status(self, user_id: int, new_status: int, request: Request, actor_id: int | None = None, current_user: dict | None = None, permission_id: int | None = None):
         try:
             user = self.db.query(User).filter(User.id == user_id).first()
