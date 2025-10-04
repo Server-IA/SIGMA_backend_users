@@ -53,7 +53,7 @@ def check_permission(current_user: dict, required_permission_id: int):
 @router.post("/pre-register/validate", response_model=PreRegisterResponse)
 async def validate_document_for_pre_register(
     body: PreRegisterValidationRequest,
-    request: Request,db: Session = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     Valida que el documento exista y esté asociado a un usuario que aún no ha completado el pre-registro.
@@ -63,8 +63,7 @@ async def validate_document_for_pre_register(
         return await user_service.validate_for_pre_register(
             document_type_id=body.document_type_id,
             document_number=body.document_number,
-            date_issuance_document=body.date_issuance_document,
-            request=request
+            date_issuance_document=body.date_issuance_document
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -76,7 +75,6 @@ async def validate_document_for_pre_register(
 @router.post("/pre-register/complete", response_model=PreRegisterResponse)
 async def complete_pre_register(
     body: PreRegisterCompleteRequest,
-    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -87,8 +85,7 @@ async def complete_pre_register(
         return await user_service.complete_pre_register(
             token=body.token,
             email=body.email,
-            password=body.password,
-            request=request
+            password=body.password
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -393,26 +390,25 @@ def change_password(
         current_user=current_user,
         permission_id=permission_id
     )
-@router.get("/{user_id}")
-def list_user(
-    user_id: int, 
+
+@router.post("/basic-user-list/by-ids")
+def list_users_basic_by_ids(
+    body: schemas.BasicUserIdsRequest,
     db: Session = Depends(get_db),
     current_user: dict = Depends(AuthService.get_current_user)
 ):
     """
-    Obtiene información detallada de un usuario.
+    Lista básica de usuarios filtrando por una lista de IDs.
+    Devuelve: id, name, first_last_name, second_last_name, document_number,
+    type_document (ID), type_document_name (nombre) y email.
     """
-    # Verificar permiso o si es administrador (user.view -> ID 5)
-    if not check_permission(current_user, 5):
-        raise HTTPException(status_code=403, detail="No tiene permisos para ver usuarios")
-    
     try:
         user_service = UserService(db)
-        return user_service.list_user(user_id)
+        return user_service.list_users_basic_by_ids(body.ids)
     except HTTPException as e:
         raise e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al obtener el usuario: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al listar usuarios por IDs: {str(e)}")
 
 @router.get("/")
 def list_users(
@@ -562,7 +558,7 @@ def send_technician_notification(
     db: Session = Depends(get_db)
 ):
     """
-    Envía un correo de notificación al técnico asignado con los detalles de la tarea.
+    Envía un correo de notificación al técnico asignado con los detalles de la programación.
     """
     try:
         # Buscar el técnico por ID

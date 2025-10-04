@@ -1,4 +1,8 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+import logging
+from app.roles import models
+
+log = logging.getLogger(__name__)
 
 def mask_email(email: str) -> str:
     if not email or "@" not in email: return "***"
