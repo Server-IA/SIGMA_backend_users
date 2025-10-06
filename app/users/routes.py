@@ -614,3 +614,16 @@ def send_technician_notification(
             status_code=500,
             detail=f"Error al procesar la notificación: {str(e)}"
         )
+
+@router.post("/notifications/send-to-permission/", response_model=dict)
+def send_notification_to_permission(
+    permission_id: int,
+    notification: NotificationCreate,  # title, message, type (user_id se ignora)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """
+    Envía una notificación a todos los usuarios que tengan el permiso indicado en alguno de sus roles.
+    """
+    user_service = UserService(db)
+    return user_service.send_notification_to_permission(permission_id, notification)
