@@ -1505,3 +1505,27 @@ class UserService:
                 }}
             )
 
+    def send_notification_to_permission(self, permission_id: int, notification: schemas.NotificationCreate) -> dict:
+        """
+        Envía una notificación a todos los usuarios que tengan el permiso indicado en alguno de sus roles.
+        """
+        from app.roles.models import Role, user_role_table
+        users = (
+            self.db.query(User)
+            .join(user_role_table)
+            .join(Role)
+            .join(Role.permissions)
+            .filter(Role.permissions.any(id=permission_id))
+            .all()
+        )
+        count = 0
+        for user in users:
+            notif = schemas.NotificationCreate(
+                user_id=user.id,
+                title=notification.title,
+                message=notification.message,
+                type=notification.type,
+            )
+            self.create_notification(notif)
+            count += 1
+        return {"success": True, "message": f"Notificación enviada a {count} usuarios con el permiso {permission_id}"}

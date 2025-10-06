@@ -44,7 +44,7 @@ def swagger_login(
     roles = []
     for role in user.roles:
         role_data = {"id": role.id, "name": role.name}
-        permisos = [{"id": perm.id, "name": perm.name} for perm in role.permissions]
+        permisos = [{"id": perm.id} for perm in role.permissions]
         role_data["permisos"] = permisos
         roles.append(role_data)
     
@@ -134,7 +134,7 @@ def login(user_credentials: UserLogin, request: Request, db: Session = Depends(g
         roles = []
         for role in user.roles:
             role_data = {"id": role.id, "name": role.name}
-            permisos = [{"id": perm.id, "name": perm.name} for perm in role.permissions]
+            permisos = [{"id": perm.id} for perm in role.permissions]
             role_data["permisos"] = permisos
             roles.append(role_data)
 
