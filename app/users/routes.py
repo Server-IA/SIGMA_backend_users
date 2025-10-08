@@ -410,6 +410,27 @@ def list_users_basic_by_ids(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al listar usuarios por IDs: {str(e)}")
 
+@router.get("/by-document/{document_number}", response_model=dict)
+async def get_user_by_document_number(
+    document_number: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """
+    Obtiene la información básica de un usuario por su número de documento.
+    
+    Requiere autenticación pero no permisos específicos.
+    Devuelve: id, name, first_last_name, second_last_name, document_number,
+    type_document (ID), type_document_name (nombre), email y phone.
+    """
+    try:
+        user_service = UserService(db)
+        return user_service.get_user_by_document_number(document_number)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al buscar el usuario por documento: {str(e)}")
+
 @router.get("/")
 def list_users(
     db: Session = Depends(get_db),
