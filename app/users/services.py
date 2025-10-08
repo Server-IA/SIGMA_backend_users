@@ -459,6 +459,93 @@ class UserService:
                 }
             })
 
+    def get_user_by_document_number(self, document_number: str):
+        """Busca un usuario por su número de documento.
+        
+        Retorna los campos: id, name, first_last_name, second_last_name, document_number,
+        type_document (ID), type_document_name (nombre), email y phone.
+        """
+        try:
+            if not document_number:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "success": False,
+                        "data": {
+                            "title": "Error de validación",
+                            "message": "El número de documento no puede estar vacío"
+                        }
+                    }
+                )
+
+            try:
+                row = (
+                    self.db.query(
+                        User.id,
+                        User.name,
+                        User.first_last_name,
+                        User.second_last_name,
+                        User.document_number,
+                        User.type_document_id,
+                        TypeDocument.name.label("type_document_name"),
+                        User.email,
+                        User.phone,
+                    )
+                    .outerjoin(User.type_document)
+                    .filter(User.document_number == document_number)
+                    .first()
+                )
+            except Exception as e:
+                if "NumericValueOutOfRange" in str(e):
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "success": False,
+                            "data": {
+                                "title": "Error de validación",
+                                "message": f"El número de documento '{document_number}' excede el límite permitido",
+                                "suggestion": "Los números de documento no deben exceder los 10 dígitos."
+                            }
+                        }
+                    )
+                raise
+
+            if not row:
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "success": False,
+                        "data": {
+                            "title": "No encontrado",
+                            "message": "No se encontró ningún usuario con el documento proporcionado."
+                        }
+                    }
+                )
+
+            user_dict = {
+                "id": row.id,
+                "name": row.name,
+                "first_last_name": row.first_last_name,
+                "second_last_name": row.second_last_name,
+                "document_number": row.document_number,
+                "type_document": row.type_document_id,
+                "type_document_name": row.type_document_name,
+                "email": row.email,
+                "phone": row.phone,
+            }
+
+            return jsonable_encoder({"success": True, "data": user_dict})
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail={
+                "success": False,
+                "data": {
+                    "title": "Error de servidor",
+                    "message": str(e),
+                }
+            })
+
     def list_users_basic_by_ids(self, ids: List[int]):
         """Devuelve lista básica de usuarios para los IDs dados.
         Campos: id, name, first_last_name, second_last_name, document_number,
@@ -478,6 +565,7 @@ class UserService:
                     User.type_document_id,
                     TypeDocument.name.label("type_document_name"),
                     User.email,
+                    User.phone,
                 )
                 .outerjoin(User.type_document)
                 .filter(User.id.in_(ids))
@@ -498,6 +586,7 @@ class UserService:
                     "type_document": r.type_document_id,
                     "type_document_name": r.type_document_name,
                     "email": r.email,
+                    "phone": r.phone,
                 }
                 users_list.append(user_dict)
 
