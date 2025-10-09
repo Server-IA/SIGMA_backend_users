@@ -490,6 +490,7 @@ class UserService:
                         TypeDocument.name.label("type_document_name"),
                         User.email,
                         User.phone,
+                        User.address,
                     )
                     .outerjoin(User.type_document)
                     .filter(User.document_number == document_number)
@@ -532,6 +533,7 @@ class UserService:
                 "type_document_name": row.type_document_name,
                 "email": row.email,
                 "phone": row.phone,
+                "address": row.address,
             }
 
             return jsonable_encoder({"success": True, "data": user_dict})
@@ -566,6 +568,7 @@ class UserService:
                     TypeDocument.name.label("type_document_name"),
                     User.email,
                     User.phone,
+                    User.address,
                 )
                 .outerjoin(User.type_document)
                 .filter(User.id.in_(ids))
@@ -587,6 +590,7 @@ class UserService:
                     "type_document_name": r.type_document_name,
                     "email": r.email,
                     "phone": r.phone,
+                    "address": r.address,
                 }
                 users_list.append(user_dict)
 
