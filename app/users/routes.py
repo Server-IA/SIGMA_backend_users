@@ -431,6 +431,28 @@ async def get_user_by_document_number(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al buscar el usuario por documento: {str(e)}")
 
+@router.get("/{user_id}")
+def list_user(
+    user_id: int, 
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """
+    Obtiene información detallada de un usuario.
+    """
+    # Verificar permiso o si es administrador (users.view -> ID 2)
+    if not check_permission(current_user, 2):
+        raise HTTPException(status_code=403, detail="No tiene permisos para ver usuarios")
+    
+    try:
+        user_service = UserService(db)
+        return user_service.list_user(user_id)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al obtener el usuario: {str(e)}")
+
+
 @router.get("/")
 def list_users(
     db: Session = Depends(get_db),
