@@ -313,6 +313,10 @@ class TechnicianNotificationResponse(BaseModel):
     message: str
     technician_email: Optional[str] = None
 
+class UserByDocumentRequest(BaseModel):
+    """Solicitud para buscar usuario por número de documento"""
+    document_number: str = Field(..., description="Número de documento a buscar")
+
 class BasicUserIdsRequest(BaseModel):
     """Solicitud para listar usuarios básicos por una lista de IDs"""
     ids: List[int]

@@ -459,6 +459,95 @@ class UserService:
                 }
             })
 
+    def get_user_by_document_number(self, document_number: str):
+        """Busca un usuario por su número de documento.
+        
+        Retorna los campos: id, name, first_last_name, second_last_name, document_number,
+        type_document (ID), type_document_name (nombre), email y phone.
+        """
+        try:
+            if not document_number:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "success": False,
+                        "data": {
+                            "title": "Error de validación",
+                            "message": "El número de documento no puede estar vacío"
+                        }
+                    }
+                )
+
+            try:
+                row = (
+                    self.db.query(
+                        User.id,
+                        User.name,
+                        User.first_last_name,
+                        User.second_last_name,
+                        User.document_number,
+                        User.type_document_id,
+                        TypeDocument.name.label("type_document_name"),
+                        User.email,
+                        User.phone,
+                        User.address,
+                    )
+                    .outerjoin(User.type_document)
+                    .filter(User.document_number == document_number)
+                    .first()
+                )
+            except Exception as e:
+                if "NumericValueOutOfRange" in str(e):
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "success": False,
+                            "data": {
+                                "title": "Error de validación",
+                                "message": f"El número de documento '{document_number}' excede el límite permitido",
+                                "suggestion": "Los números de documento no deben exceder los 10 dígitos."
+                            }
+                        }
+                    )
+                raise
+
+            if not row:
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "success": False,
+                        "data": {
+                            "title": "No encontrado",
+                            "message": "No se encontró ningún usuario con el documento proporcionado."
+                        }
+                    }
+                )
+
+            user_dict = {
+                "id": row.id,
+                "name": row.name,
+                "first_last_name": row.first_last_name,
+                "second_last_name": row.second_last_name,
+                "document_number": row.document_number,
+                "type_document": row.type_document_id,
+                "type_document_name": row.type_document_name,
+                "email": row.email,
+                "phone": row.phone,
+                "address": row.address,
+            }
+
+            return jsonable_encoder({"success": True, "data": user_dict})
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail={
+                "success": False,
+                "data": {
+                    "title": "Error de servidor",
+                    "message": str(e),
+                }
+            })
+
     def list_users_basic_by_ids(self, ids: List[int]):
         """Devuelve lista básica de usuarios para los IDs dados.
         Campos: id, name, first_last_name, second_last_name, document_number,
@@ -478,6 +567,8 @@ class UserService:
                     User.type_document_id,
                     TypeDocument.name.label("type_document_name"),
                     User.email,
+                    User.phone,
+                    User.address,
                 )
                 .outerjoin(User.type_document)
                 .filter(User.id.in_(ids))
@@ -498,6 +589,8 @@ class UserService:
                     "type_document": r.type_document_id,
                     "type_document_name": r.type_document_name,
                     "email": r.email,
+                    "phone": r.phone,
+                    "address": r.address,
                 }
                 users_list.append(user_dict)
 
@@ -1505,3 +1598,27 @@ class UserService:
                 }}
             )
 
+    def send_notification_to_permission(self, permission_id: int, notification: schemas.NotificationCreate) -> dict:
+        """
+        Envía una notificación a todos los usuarios que tengan el permiso indicado en alguno de sus roles.
+        """
+        from app.roles.models import Role, user_role_table
+        users = (
+            self.db.query(User)
+            .join(user_role_table)
+            .join(Role)
+            .join(Role.permissions)
+            .filter(Role.permissions.any(id=permission_id))
+            .all()
+        )
+        count = 0
+        for user in users:
+            notif = schemas.NotificationCreate(
+                user_id=user.id,
+                title=notification.title,
+                message=notification.message,
+                type=notification.type,
+            )
+            self.create_notification(notif)
+            count += 1
+        return {"success": True, "message": f"Notificación enviada a {count} usuarios con el permiso {permission_id}"}
