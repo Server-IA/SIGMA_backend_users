@@ -313,6 +313,30 @@ class TechnicianNotificationResponse(BaseModel):
     message: str
     technician_email: Optional[str] = None
 
+class UserUpdateRequest(BaseModel):
+    """Esquema para actualizar la información del usuario"""
+    type_document_id: Optional[int] = Field(None, description="ID del tipo de documento")
+    document_number: Optional[str] = Field(None, max_length=30, description="Número de documento")
+    name: Optional[str] = Field(None, min_length=1, max_length=30, description="Nombres del usuario")
+    first_last_name: Optional[str] = Field(None, min_length=1, max_length=30, description="Primer apellido")
+    second_last_name: Optional[str] = Field(None, max_length=30, description="Segundo apellido")
+    email: Optional[str] = Field(None, description="Correo electrónico")
+    phone: Optional[str] = Field(None, description="Número de teléfono")
+    address: Optional[str] = Field(None, description="Dirección")
+
+    @validator('document_number')
+    def validate_document_number(cls, v):
+        if v is not None and not v.isdigit():
+            raise ValueError("El número de documento debe contener solo dígitos")
+        return v
+
+    @validator('email')
+    def validate_email(cls, v):
+        if v is not None and "@" not in v:
+            raise ValueError("El correo electrónico no es válido")
+        return v
+
+
 class UserByDocumentRequest(BaseModel):
     """Solicitud para buscar usuario por número de documento"""
     document_number: str = Field(..., description="Número de documento a buscar")
