@@ -130,6 +130,18 @@ class UserService:
                     detail="Usuario no encontrado"
                 )
                 
+            # Obtener snapshot de los datos actuales para la auditoría
+            before = {
+                'type_document_id': user.type_document_id,
+                'document_number': user.document_number,
+                'name': user.name,
+                'first_last_name': user.first_last_name,
+                'second_last_name': user.second_last_name,
+                'email': user.email,
+                'phone': user.phone,
+                'address': user.address
+            }
+                
             # Validar documento único si se está actualizando
             if 'document_number' in update_data and update_data['document_number']:
                 self.validate_unique_document(update_data['document_number'], exclude_user_id=user_id)
@@ -151,6 +163,43 @@ class UserService:
             
             user.updated_at = datetime.utcnow()
             self.db.commit()
+            
+            # Obtener snapshot de los datos después de la actualización
+            after = {
+                'type_document_id': user.type_document_id,
+                'document_number': user.document_number,
+                'name': user.name,
+                'first_last_name': user.first_last_name,
+                'second_last_name': user.second_last_name,
+                'email': user.email,
+                'phone': user.phone,
+                'address': user.address
+            }
+            
+            # Registrar auditoría
+            try:
+                actor_id = str(current_user.get('id')) if current_user and current_user.get('id') is not None else None
+                actor_name = f"{current_user.get('name', '')} {current_user.get('first_last_name', '')}".strip() if current_user else "Sistema"
+                actor_role, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+                actor_role = actor_role or "Usuario"
+                
+                AuditClient(None).update(
+                    object_id=str(user.id),
+                    before=before,
+                    after=after,
+                    actor_id=actor_id,
+                    actor_name=actor_name,
+                    actor_role=actor_role,
+                    permission_id=4,
+                    module="users_management",
+                    submodule="users",
+                    meta={
+                        "action": "update_profile"
+                    }
+                )
+            except Exception as audit_error:
+                # No fallar la operación si hay un error en la auditoría
+                print(f"Error en auditoría de actualización de perfil: {str(audit_error)}")
             
             return {
                 "success": True,
