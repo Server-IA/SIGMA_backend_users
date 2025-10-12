@@ -27,7 +27,8 @@ from app.users.schemas import (
     NotificationCreate,
     MarkReadRequest,
     TechnicianNotificationRequest,
-    TechnicianNotificationResponse
+    TechnicianNotificationResponse,
+    UserUpdateRequest
 )
 from app.users.services import UserService
 from app.auth.services import AuthService
@@ -390,6 +391,52 @@ def change_password(
         current_user=current_user,
         permission_id=permission_id
     )
+
+
+@router.put("/{user_id}/profile", response_model=dict)
+async def update_user_profile(
+    user_id: int,
+    user_data: UserUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """
+    Actualiza la información del perfil de un usuario.
+    
+    Permite actualizar:
+    - Tipo de documento
+    - Número de documento (validando que no esté en uso)
+    - Nombres
+    - Apellidos
+    - Correo electrónico (validando que no esté en uso)
+    - Teléfono
+    - Dirección
+    
+    Requiere autenticación. Puede ser usado por servicios externos para actualizar perfiles.
+    """
+    try:
+        user_service = UserService(db)
+        
+        # Convertir el modelo Pydantic a dict y eliminar campos None
+        update_data = user_data.dict(exclude_unset=True)
+        
+        # Actualizar el perfil
+        result = await user_service.update_user_profile(
+            user_id=user_id,
+            update_data=update_data,
+            current_user=current_user
+        )
+        
+        return result
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al actualizar el perfil: {str(e)}"
+        )
 
 @router.post("/basic-user-list/by-ids")
 def list_users_basic_by_ids(
