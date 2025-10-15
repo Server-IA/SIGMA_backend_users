@@ -32,6 +32,7 @@ from app.users.schemas import (
 )
 from app.users.services import UserService
 from app.auth.services import AuthService
+from app.email_service import EmailService
 
 router = APIRouter(tags=["Users"])
 
@@ -778,3 +779,28 @@ def send_notification_to_permission(
     """
     user_service = UserService(db)
     return user_service.send_notification_to_permission(permission_id, notification)
+
+
+@router.post("/notifications/send-cancellation/", response_model=dict, status_code=status.HTTP_202_ACCEPTED)
+def send_cancellation_notification(
+    payload: schemas.CancellationNotificationRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """
+    Envía por correo la notificación de cancelación de una solicitud al cliente.
+    Body: { email, client_name, reason, request_code }
+    Se ejecuta en background usando EmailService.
+    Requiere autenticación (cualquier usuario autenticado puede dispararla).
+    """
+    # Puedes agregar comprobaciones de permiso si lo deseas; por ahora exigimos autenticación
+    email_service = EmailService()
+    background_tasks.add_task(
+        email_service.send_cancellation_notification_email,
+        payload.email,
+        payload.client_name,
+        payload.reason,
+        payload.request_code
+    )
+    return {"success": True, "message": "Notificación de cancelación encolada para envío"}
