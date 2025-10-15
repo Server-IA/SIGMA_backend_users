@@ -344,3 +344,11 @@ class UserByDocumentRequest(BaseModel):
 class BasicUserIdsRequest(BaseModel):
     """Solicitud para listar usuarios básicos por una lista de IDs"""
     ids: List[int]
+
+
+class CancellationNotificationRequest(BaseModel):
+    """Payload para notificar la cancelación de una solicitud al cliente"""
+    email: EmailStr
+    client_name: str
+    reason: str
+    request_code: str
