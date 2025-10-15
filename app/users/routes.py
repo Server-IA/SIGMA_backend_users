@@ -27,10 +27,12 @@ from app.users.schemas import (
     NotificationCreate,
     MarkReadRequest,
     TechnicianNotificationRequest,
-    TechnicianNotificationResponse
+    TechnicianNotificationResponse,
+    UserUpdateRequest
 )
 from app.users.services import UserService
 from app.auth.services import AuthService
+from app.email_service import EmailService
 
 router = APIRouter(tags=["Users"])
 
@@ -391,6 +393,52 @@ def change_password(
         permission_id=permission_id
     )
 
+
+@router.put("/{user_id}/profile", response_model=dict)
+async def update_user_profile(
+    user_id: int,
+    user_data: UserUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """
+    Actualiza la información del perfil de un usuario.
+    
+    Permite actualizar:
+    - Tipo de documento
+    - Número de documento (validando que no esté en uso)
+    - Nombres
+    - Apellidos
+    - Correo electrónico (validando que no esté en uso)
+    - Teléfono
+    - Dirección
+    
+    Requiere autenticación. Puede ser usado por servicios externos para actualizar perfiles.
+    """
+    try:
+        user_service = UserService(db)
+        
+        # Convertir el modelo Pydantic a dict y eliminar campos None
+        update_data = user_data.dict(exclude_unset=True)
+        
+        # Actualizar el perfil
+        result = await user_service.update_user_profile(
+            user_id=user_id,
+            update_data=update_data,
+            current_user=current_user
+        )
+        
+        return result
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al actualizar el perfil: {str(e)}"
+        )
+
 @router.post("/basic-user-list/by-ids")
 def list_users_basic_by_ids(
     body: schemas.BasicUserIdsRequest,
@@ -529,6 +577,67 @@ def get_unread_notification_count(
     """
     user_service = UserService(db)
     return user_service.get_unread_notification_count(current_user["id"])
+
+@router.get("/machinery_operators/active", response_model=List[dict])
+def get_active_machinery_operators(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """
+    Obtiene todos los operadores de maquinaria activos (con permiso ID 147).
+    Devuelve solo id, nombre, primer apellido y segundo apellido (opcional).
+    Requiere autenticación.
+    """
+    try:
+        # Buscar todos los roles que tienen el permiso con ID 147
+        roles_with_perm = db.query(Role).join(
+            role_permission_table, 
+            Role.id == role_permission_table.c.rol_id
+        ).filter(
+            role_permission_table.c.permission_id == 147
+        ).all()
+        
+        if not roles_with_perm:
+            return []
+        
+        # Obtener los IDs de los roles que tienen el permiso
+        role_ids = [role.id for role in roles_with_perm]
+        
+        # Buscar usuarios con esos roles y que estén activos (status_id=1)
+        users = db.query(
+            User.id,
+            User.name,
+            User.first_last_name,
+            User.second_last_name
+        ).join(
+            user_role_table,
+            User.id == user_role_table.c.user_id
+        ).filter(
+            user_role_table.c.rol_id.in_(role_ids),
+            User.status_id == 1
+        ).all()
+        
+        # Convertir los resultados a diccionarios
+        result = []
+        for user in users:
+            user_dict = {
+                "id": user.id,
+                "name": user.name,
+                "first_last_name": user.first_last_name,
+            }
+            # Solo incluir el segundo apellido si no es None
+            if user.second_last_name is not None:
+                user_dict["second_last_name"] = user.second_last_name
+                
+            result.append(user_dict)
+            
+        return result
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener los operadores de maquinaria activos: {str(e)}"
+        )
 
 @router.get("/technicians/active", response_model=List[dict])
 def get_active_technicians(
@@ -670,3 +779,28 @@ def send_notification_to_permission(
     """
     user_service = UserService(db)
     return user_service.send_notification_to_permission(permission_id, notification)
+
+
+@router.post("/notifications/send-cancellation/", response_model=dict, status_code=status.HTTP_202_ACCEPTED)
+def send_cancellation_notification(
+    payload: schemas.CancellationNotificationRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """
+    Envía por correo la notificación de cancelación de una solicitud al cliente.
+    Body: { email, client_name, reason, request_code }
+    Se ejecuta en background usando EmailService.
+    Requiere autenticación (cualquier usuario autenticado puede dispararla).
+    """
+    # Puedes agregar comprobaciones de permiso si lo deseas; por ahora exigimos autenticación
+    email_service = EmailService()
+    background_tasks.add_task(
+        email_service.send_cancellation_notification_email,
+        payload.email,
+        payload.client_name,
+        payload.reason,
+        payload.request_code
+    )
+    return {"success": True, "message": "Notificación de cancelación encolada para envío"}
