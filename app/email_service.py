@@ -516,76 +516,51 @@ class EmailService:
         - message: mensaje personalizado de confirmación
         - request_code: código de la pre-solicitud
         """
-        subject = f"Confirmación de Pre-solicitud #{request_code}"
-    
-        # Plantilla HTML mejorada para el correo de confirmación
+        subject = f"Confirmación de Pre-solicitud - {request_code}"
+        
+        # Cuerpo del correo en texto plano
+        body = f"""
+        Hola {client_name},
+
+        {message}
+
+        Código de solicitud: {request_code}
+
+        Si tienes alguna pregunta o necesitas más información, no dudes en contactarnos.
+
+        Saludos,
+        Equipo de Sigma
+        """
+
+        # Contenido HTML con el mismo estilo que el correo de cancelación
         html_body = f"""
-        <!DOCTYPE html>
         <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Confirmación de Pre-solicitud</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}
-                .container {{ max-width: 600px; margin: 20px auto; padding: 20px; }}
-                .header {{ background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }}
-                .content {{ background-color: #f9f9f9; padding: 20px; border-radius: 0 0 5px 5px; }}
-                .footer {{ margin-top: 20px; font-size: 12px; color: #777; text-align: center; }}
-                .code {{ background-color: #e9f7ef; padding: 10px; border-radius: 4px; font-family: monospace; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h2>¡Pre-solicitud Recibida!</h2>
+        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
+            <div style="background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <h2 style="color: #333; margin-bottom: 20px;">Hola {client_name},</h2>
+                <p style="color: #555; line-height: 1.6; margin-bottom: 20px;">{message}</p>
+                <div style="background-color: #e7f5ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #4dabf7;">
+                    <p style="margin: 0; color: #0c5460; line-height: 1.6; font-weight: 500;">
+                        Código de solicitud: <span style="color: #1864ab;">{request_code}</span>
+                    </p>
                 </div>
-                <div class="content">
-                    <p>Hola {client_name},</p>
-                    <p>{message}</p>
-                    <p>El código de tu pre-solicitud es: <strong>{request_code}</strong></p>
-                    <p>Puedes hacer seguimiento a tu solicitud en cualquier momento utilizando este código.</p>
-                    <p>Si tienes alguna pregunta o necesitas asistencia adicional, no dudes en contactarnos.</p>
-                    <p>¡Gracias por confiar en nosotros!</p>
-                    <p>Atentamente,<br>El equipo de soporte</p>
-                </div>
-                <div class="footer">
-                    <p>Este es un correo automático, por favor no respondas a este mensaje.</p>
-                </div>
+                <p style="color: #666; font-size: 14px; margin-bottom: 20px;">
+                    Si tienes alguna pregunta o necesitas más información, no dudes en respondernos a este correo o visitar nuestro centro de ayuda.
+                </p>
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+                <p style="color: #999; font-size: 12px; text-align: center;">
+                    Saludos,<br>Equipo de Sigma
+                </p>
             </div>
         </body>
         </html>
         """
 
-        # Versión de texto plano para clientes de correo que no soportan HTML
-        text_body = f"""
-        Confirmación de Pre-solicitud
-        ===========================
-
-        Hola {client_name},
-
-        {message}
-
-        El código de tu pre-solicitud es: {request_code}
-
-        Puedes hacer seguimiento a tu solicitud en cualquier momento utilizando este código.
-
-        Si tienes alguna pregunta o necesitas asistencia adicional, no dudes en contactarnos.
-
-        ¡Gracias por confiar en nosotros!
-
-        Atentamente,
-        El equipo de soporte
-
-        ---
-        Este es un correo automático, por favor no respondas a este mensaje.
-        """.format(client_name=client_name, message=message, request_code=request_code)
-
         em = EmailMessage()
         em["From"] = self.sender_email
         em["To"] = to_email
         em["Subject"] = subject
-        em.set_content(text_body)
+        em.set_content(body)
         em.add_alternative(html_body, subtype="html")
 
         try:
