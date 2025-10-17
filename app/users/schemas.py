@@ -352,3 +352,10 @@ class CancellationNotificationRequest(BaseModel):
     client_name: str
     reason: str
     request_code: str
+
+class PresolicitudConfirmationRequest(BaseModel):
+    """Payload para notificar la confirmación de una pre-solicitud al cliente"""
+    email: EmailStr
+    client_name: str
+    message: str
+    request_code: str

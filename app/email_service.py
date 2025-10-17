@@ -505,3 +505,96 @@ class EmailService:
         except Exception as e:
             logger.error(f"Error al enviar correo de cancelación para {to_email}: {str(e)}")
             return False
+
+    def send_presolicitud_confirmation_email(self, to_email: str, client_name: str, message: str, request_code: str) -> bool:
+        """
+        Envía un correo de confirmación de pre-solicitud al cliente.
+
+        Parámetros:
+        - to_email: correo electrónico del cliente
+        - client_name: nombre del cliente
+        - message: mensaje personalizado de confirmación
+        - request_code: código de la pre-solicitud
+        """
+        subject = f"Confirmación de Pre-solicitud #{request_code}"
+    
+        # Plantilla HTML mejorada para el correo de confirmación
+        html_body = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Confirmación de Pre-solicitud</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}
+                .container {{ max-width: 600px; margin: 20px auto; padding: 20px; }}
+                .header {{ background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }}
+                .content {{ background-color: #f9f9f9; padding: 20px; border-radius: 0 0 5px 5px; }}
+                .footer {{ margin-top: 20px; font-size: 12px; color: #777; text-align: center; }}
+                .code {{ background-color: #e9f7ef; padding: 10px; border-radius: 4px; font-family: monospace; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h2>¡Pre-solicitud Recibida!</h2>
+                </div>
+                <div class="content">
+                    <p>Hola {client_name},</p>
+                    <p>{message}</p>
+                    <p>El código de tu pre-solicitud es: <strong>{request_code}</strong></p>
+                    <p>Puedes hacer seguimiento a tu solicitud en cualquier momento utilizando este código.</p>
+                    <p>Si tienes alguna pregunta o necesitas asistencia adicional, no dudes en contactarnos.</p>
+                    <p>¡Gracias por confiar en nosotros!</p>
+                    <p>Atentamente,<br>El equipo de soporte</p>
+                </div>
+                <div class="footer">
+                    <p>Este es un correo automático, por favor no respondas a este mensaje.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        # Versión de texto plano para clientes de correo que no soportan HTML
+        text_body = f"""
+        Confirmación de Pre-solicitud
+        ===========================
+
+        Hola {client_name},
+
+        {message}
+
+        El código de tu pre-solicitud es: {request_code}
+
+        Puedes hacer seguimiento a tu solicitud en cualquier momento utilizando este código.
+
+        Si tienes alguna pregunta o necesitas asistencia adicional, no dudes en contactarnos.
+
+        ¡Gracias por confiar en nosotros!
+
+        Atentamente,
+        El equipo de soporte
+
+        ---
+        Este es un correo automático, por favor no respondas a este mensaje.
+        """.format(client_name=client_name, message=message, request_code=request_code)
+
+        em = EmailMessage()
+        em["From"] = self.sender_email
+        em["To"] = to_email
+        em["Subject"] = subject
+        em.set_content(text_body)
+        em.add_alternative(html_body, subtype="html")
+
+        try:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
+                smtp.login(self.sender_email, self.sender_password)
+                smtp.sendmail(self.sender_email, to_email, em.as_string())
+                logger.info(f"Correo de confirmación de pre-solicitud enviado a {to_email} para la solicitud {request_code}")
+                return True
+        except Exception as e:
+            logger.error(f"Error al enviar correo de confirmación de pre-solicitud a {to_email}: {str(e)}")
+            return False
