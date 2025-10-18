@@ -29,7 +29,8 @@ from app.users.schemas import (
     TechnicianNotificationRequest,
     TechnicianNotificationResponse,
     UserUpdateRequest,
-    PresolicitudConfirmationRequest
+    PresolicitudConfirmationRequest,
+    SolicitudCompletedRequest
 )
 from app.users.services import UserService
 from app.auth.services import AuthService
@@ -828,3 +829,26 @@ def send_presolicitud_confirmation(
         payload.request_code
     )
     return {"success": True, "message": "Correo de confirmación de pre-solicitud encolado para envío"}
+
+@router.post("/notifications/send-solicitud-completed/", response_model=dict, status_code=status.HTTP_202_ACCEPTED)
+def send_solicitud_completed_notification(
+    payload: SolicitudCompletedRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """
+    Envía por correo la notificación de solicitud completada al cliente.
+    Body: { email, client_name, message, request_code }
+    Se ejecuta en background usando EmailService.
+    Requiere autenticación (cualquier usuario autenticado puede dispararla).
+    """
+    email_service = EmailService()
+    background_tasks.add_task(
+        email_service.send_solicitud_completed_email,
+        payload.email,
+        payload.client_name,
+        payload.message,
+        payload.request_code
+    )
+    return {"success": True, "message": "Correo de solicitud completada encolado para envío"}
