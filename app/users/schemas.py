@@ -359,3 +359,10 @@ class PresolicitudConfirmationRequest(BaseModel):
     client_name: str
     message: str
     request_code: str
+
+class SolicitudCompletedRequest(BaseModel):
+    """Payload para notificar la finalización de una solicitud al cliente"""
+    email: EmailStr
+    client_name: str
+    message: str
+    request_code: str
