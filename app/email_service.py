@@ -444,3 +444,132 @@ class EmailService:
         except Exception as e:
             logger.error(f"Error al enviar correo de notificación de técnico: {str(e)}")
             return False
+
+    def send_cancellation_notification_email(self, to_email: str, client_name: str, reason: str, request_code: str) -> bool:
+        """
+        Envía un correo notificando al cliente que su solicitud fue cancelada.
+
+        Parámetros:
+        - to_email: correo del cliente
+        - client_name: nombre del cliente
+        - reason: motivo de la cancelación
+        - request_code: código de la solicitud cancelada
+        """
+        subject = "Notificación: Cancelación de solicitud - Sigma"
+        body = f"""
+        Hola {client_name},
+
+        Te informamos que tu solicitud con código {request_code} ha sido cancelada.
+
+        Motivo:
+        {reason}
+
+        Si crees que esto es un error o necesitas más información, por favor contáctanos.
+
+        Saludos,
+        Equipo de Sigma
+        """
+
+        # Contenido HTML más presentable
+        html_body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
+            <div style="background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <h2 style="color: #333; margin-bottom: 20px;">Hola {client_name},</h2>
+                <p style="color: #555; line-height: 1.6; margin-bottom: 10px;">Te informamos que tu solicitud <strong>{request_code}</strong> ha sido <strong>cancelada</strong>.</p>
+                <div style="background-color: #fff3cd; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #ffc107;">
+                    <p style="margin: 0; color: #856404; line-height: 1.6;"><strong>Motivo:</strong><br>{reason}</p>
+                </div>
+                <p style="color: #666; font-size: 14px; margin-bottom: 20px;">Si crees que esto es un error o necesitas más información, por favor responde a este correo o visita nuestro centro de ayuda.</p>
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+                <p style="color: #999; font-size: 12px; text-align: center;">Saludos,<br>Equipo de Sigma</p>
+            </div>
+        </body>
+        </html>
+        """
+
+        em = EmailMessage()
+        em["From"] = self.sender_email
+        em["To"] = to_email
+        em["Subject"] = subject
+        em.set_content(body)
+        em.add_alternative(html_body, subtype="html")
+
+        try:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
+                smtp.login(self.sender_email, self.sender_password)
+                smtp.sendmail(self.sender_email, to_email, em.as_string())
+                logger.info(f"Correo de cancelación enviado a {to_email} para solicitud {request_code}")
+                return True
+        except Exception as e:
+            logger.error(f"Error al enviar correo de cancelación para {to_email}: {str(e)}")
+            return False
+
+    def send_presolicitud_confirmation_email(self, to_email: str, client_name: str, message: str, request_code: str) -> bool:
+        """
+        Envía un correo de confirmación de pre-solicitud al cliente.
+
+        Parámetros:
+        - to_email: correo electrónico del cliente
+        - client_name: nombre del cliente
+        - message: mensaje personalizado de confirmación
+        - request_code: código de la pre-solicitud
+        """
+        subject = f"Confirmación de Pre-solicitud - {request_code}"
+        
+        # Cuerpo del correo en texto plano
+        body = f"""
+        Hola {client_name},
+
+        {message}
+
+        Código de solicitud: {request_code}
+
+        Si tienes alguna pregunta o necesitas más información, no dudes en contactarnos.
+
+        Saludos,
+        Equipo de Sigma
+        """
+
+        # Contenido HTML con el mismo estilo que el correo de cancelación
+        html_body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
+            <div style="background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <h2 style="color: #333; margin-bottom: 20px;">Hola {client_name},</h2>
+                <p style="color: #555; line-height: 1.6; margin-bottom: 20px;">{message}</p>
+                <div style="background-color: #e7f5ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #4dabf7;">
+                    <p style="margin: 0; color: #0c5460; line-height: 1.6; font-weight: 500;">
+                        Código de solicitud: <span style="color: #1864ab;">{request_code}</span>
+                    </p>
+                </div>
+                <p style="color: #666; font-size: 14px; margin-bottom: 20px;">
+                    Si tienes alguna pregunta o necesitas más información, no dudes en respondernos a este correo o visitar nuestro centro de ayuda.
+                </p>
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+                <p style="color: #999; font-size: 12px; text-align: center;">
+                    Saludos,<br>Equipo de Sigma
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+
+        em = EmailMessage()
+        em["From"] = self.sender_email
+        em["To"] = to_email
+        em["Subject"] = subject
+        em.set_content(body)
+        em.add_alternative(html_body, subtype="html")
+
+        try:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
+                smtp.login(self.sender_email, self.sender_password)
+                smtp.sendmail(self.sender_email, to_email, em.as_string())
+                logger.info(f"Correo de confirmación de pre-solicitud enviado a {to_email} para la solicitud {request_code}")
+                return True
+        except Exception as e:
+            logger.error(f"Error al enviar correo de confirmación de pre-solicitud a {to_email}: {str(e)}")
+            return False

@@ -84,7 +84,138 @@ class UserService:
                 status_code=400,
                 detail=f"El número de documento '{document_number}' ya está registrado por otro usuario."
             )
+            
+    def validate_unique_email(self, email: str, exclude_user_id: int = None):
+        """
+        Verifica que el correo electrónico sea único.
+        Si `exclude_user_id` está definido, lo excluye de la búsqueda (para updates).
+        """
+        if not email:
+            return
+            
+        query = self.db.query(User).filter(User.email == email.lower())
+        if exclude_user_id:
+            query = query.filter(User.id != exclude_user_id)
+        existing_user = query.first()
 
+        if existing_user:
+            raise HTTPException(
+                status_code=400,
+                detail=f"El correo electrónico '{email}' ya está registrado por otro usuario."
+            )
+
+    async def update_user_profile(
+        self, 
+        user_id: int, 
+        update_data: dict,
+        current_user: dict = None
+    ) -> dict:
+        """
+        Actualiza la información del perfil de un usuario.
+        
+        Args:
+            user_id: ID del usuario a actualizar
+            update_data: Diccionario con los campos a actualizar
+            current_user: Usuario autenticado (opcional, para verificación de permisos)
+            
+        Returns:
+            dict: Diccionario con el resultado de la operación
+        """
+        try:
+            # Obtener el usuario
+            user = self.db.query(User).filter(User.id == user_id).first()
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Usuario no encontrado"
+                )
+                
+            # Obtener snapshot de los datos actuales para la auditoría
+            before = {
+                'type_document_id': user.type_document_id,
+                'document_number': user.document_number,
+                'name': user.name,
+                'first_last_name': user.first_last_name,
+                'second_last_name': user.second_last_name,
+                'email': user.email,
+                'phone': user.phone,
+                'address': user.address
+            }
+                
+            # Validar documento único si se está actualizando
+            if 'document_number' in update_data and update_data['document_number']:
+                self.validate_unique_document(update_data['document_number'], exclude_user_id=user_id)
+                
+            # Validar email único si se está actualizando
+            if 'email' in update_data and update_data['email']:
+                self.validate_unique_email(update_data['email'], exclude_user_id=user_id)
+                update_data['email'] = update_data['email'].lower()
+            
+            # Actualizar campos permitidos
+            allowed_fields = [
+                'type_document_id', 'document_number', 'name', 'first_last_name',
+                'second_last_name', 'email', 'phone', 'address'
+            ]
+            
+            for field in allowed_fields:
+                if field in update_data and update_data[field] is not None:
+                    setattr(user, field, update_data[field])
+            
+            user.updated_at = datetime.utcnow()
+            self.db.commit()
+            
+            # Obtener snapshot de los datos después de la actualización
+            after = {
+                'type_document_id': user.type_document_id,
+                'document_number': user.document_number,
+                'name': user.name,
+                'first_last_name': user.first_last_name,
+                'second_last_name': user.second_last_name,
+                'email': user.email,
+                'phone': user.phone,
+                'address': user.address
+            }
+            
+            # Registrar auditoría
+            try:
+                actor_id = str(current_user.get('id')) if current_user and current_user.get('id') is not None else None
+                actor_name = f"{current_user.get('name', '')} {current_user.get('first_last_name', '')}".strip() if current_user else "Sistema"
+                actor_role, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+                actor_role = actor_role or "Usuario"
+                
+                AuditClient(None).update(
+                    object_id=str(user.id),
+                    before=before,
+                    after=after,
+                    actor_id=actor_id,
+                    actor_name=actor_name,
+                    actor_role=actor_role,
+                    permission_id=4,
+                    module="users_management",
+                    submodule="users",
+                    meta={
+                        "action": "update_profile"
+                    }
+                )
+            except Exception as audit_error:
+                # No fallar la operación si hay un error en la auditoría
+                print(f"Error en auditoría de actualización de perfil: {str(audit_error)}")
+            
+            return {
+                "success": True,
+                "message": "Perfil actualizado exitosamente",
+                "user_id": user.id
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al actualizar el perfil: {str(e)}"
+            )
+    
     async def save_profile_picture(self, file: UploadFile) -> str:
         """
         Guarda la imagen de perfil en Firebase Storage con un nombre único
