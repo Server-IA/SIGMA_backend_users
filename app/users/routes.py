@@ -30,7 +30,8 @@ from app.users.schemas import (
     TechnicianNotificationResponse,
     UserUpdateRequest,
     PresolicitudConfirmationRequest,
-    SolicitudCompletedRequest
+    SolicitudCompletedRequest,
+    SolicitudCreatedRequest
 )
 from app.users.services import UserService
 from app.auth.services import AuthService
@@ -808,6 +809,29 @@ def send_cancellation_notification(
         payload.request_code
     )
     return {"success": True, "message": "Notificación de cancelación encolada para envío"}
+
+@router.post("/notifications/send-solicitud-created/", response_model=dict, status_code=status.HTTP_202_ACCEPTED)
+def send_solicitud_created_notification(
+    payload: SolicitudCreatedRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """
+    Envía por correo la notificación de solicitud creada al cliente.
+    Body: { email, client_name, message, request_code }
+    Se ejecuta en background usando EmailService.
+    Requiere autenticación (cualquier usuario autenticado puede dispararla).
+    """
+    email_service = EmailService()
+    background_tasks.add_task(
+        email_service.send_solicitud_created_email,
+        payload.email,
+        payload.client_name,
+        payload.message,
+        payload.request_code
+    )
+    return {"success": True, "message": "Notificación de creación de solicitud encolada para envío"}
 
 @router.post("/notifications/send-presolicitud-confirmation/", response_model=dict, status_code=status.HTTP_202_ACCEPTED)
 def send_presolicitud_confirmation(

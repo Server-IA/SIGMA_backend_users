@@ -365,4 +365,11 @@ class SolicitudCompletedRequest(BaseModel):
     email: EmailStr
     client_name: str
     message: str
+    request_code: str 
+    
+class SolicitudCreatedRequest(BaseModel):
+    """Payload para notificar la creación de una solicitud al cliente"""
+    email: EmailStr
+    client_name: str
+    message: str
     request_code: str
