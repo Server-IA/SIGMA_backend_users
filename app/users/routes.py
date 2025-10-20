@@ -606,6 +606,7 @@ def get_active_machinery_operators(
         role_ids = [role.id for role in roles_with_perm]
         
         # Buscar usuarios con esos roles y que estén activos (status_id=1)
+        # Usamos distinct() para evitar usuarios duplicados que tengan múltiples roles con el mismo permiso
         users = db.query(
             User.id,
             User.name,
@@ -617,7 +618,7 @@ def get_active_machinery_operators(
         ).filter(
             user_role_table.c.rol_id.in_(role_ids),
             User.status_id == 1
-        ).all()
+        ).distinct(User.id).all()
         
         # Convertir los resultados a diccionarios
         result = []
@@ -671,6 +672,7 @@ def get_active_technicians(
         role_ids = [role.id for role in roles_with_perm]
         
         # Buscar usuarios con esos roles y que estén activos (status_id=1)
+        # Usamos distinct() para evitar usuarios duplicados que tengan múltiples roles con el mismo permiso
         users = db.query(
             User.id,
             User.name,
@@ -682,7 +684,7 @@ def get_active_technicians(
         ).filter(
             user_role_table.c.rol_id.in_(role_ids),
             User.status_id == 1
-        ).all()
+        ).distinct(User.id).all()
         
         # Convertir los resultados a diccionarios
         result = []
