@@ -658,3 +658,87 @@ class EmailService:
         except Exception as e:
             logger.error(f"Error al enviar correo de solicitud completada a {to_email}: {str(e)}")
             return False
+    
+    def send_solicitud_created_email(self, to_email: str, client_name: str, message: str, request_code: str) -> bool:
+        """
+        Envía un correo de notificación al cliente cuando se crea una solicitud.
+
+        Parámetros:
+        - to_email: correo electrónico del cliente
+        - client_name: nombre del cliente
+        - message: mensaje personalizado sobre la creación
+        - request_code: código de la solicitud
+        """
+        subject = f"Nueva Solicitud Creada - {request_code}"
+        
+        # Cuerpo del correo en texto plano
+        body = f"""
+        Hola {client_name},
+
+        Tu solicitud ha sido creada exitosamente.
+
+        {message}
+
+        Código de solicitud: {request_code}
+
+        Gracias por elegir nuestros servicios. Te mantendremos informado sobre el progreso de tu solicitud.
+
+        Saludos,
+        Equipo de Sigma
+        """
+
+        # Contenido HTML con diseño profesional
+        html_body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
+            <div style="background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <div style="text-align: center; margin-bottom: 30px;">
+                    <h2 style="color: #007bff; margin-bottom: 10px;">📋 Nueva Solicitud Creada</h2>
+                </div>
+                
+                <h3 style="color: #333; margin-bottom: 20px;">Hola {client_name},</h3>
+                
+                <p style="color: #555; line-height: 1.6; margin-bottom: 20px;">
+                    Nos complace informarte que tu solicitud ha sido <strong>creada exitosamente</strong>.
+                </p>
+                
+                <p style="color: #555; line-height: 1.6; margin-bottom: 20px;">
+                    {message}
+                </p>
+                
+                <div style="background-color: #e7f5ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #007bff;">
+                    <p style="margin: 0; color: #0c5460; line-height: 1.6; font-weight: 500;">
+                        📋 Código de solicitud: <span style="color: #0056b3; font-weight: bold;">{request_code}</span>
+                    </p>
+                </div>
+                
+                <p style="color: #666; font-size: 14px; margin-bottom: 20px;">
+                    Gracias por elegir nuestros servicios. Te mantendremos informado sobre el progreso de tu solicitud y cualquier actualización importante.
+                </p>
+                
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+                <p style="color: #999; font-size: 12px; text-align: center;">
+                    Saludos,<br>Equipo de Sigma
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+
+        em = EmailMessage()
+        em["From"] = self.sender_email
+        em["To"] = to_email
+        em["Subject"] = subject
+        em.set_content(body)
+        em.add_alternative(html_body, subtype="html")
+
+        try:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
+                smtp.login(self.sender_email, self.sender_password)
+                smtp.sendmail(self.sender_email, to_email, em.as_string())
+                logger.info(f"Correo de solicitud creada enviado a {to_email} para la solicitud {request_code}")
+                return True
+        except Exception as e:
+            logger.error(f"Error al enviar correo de solicitud creada a {to_email}: {str(e)}")
+            return False
