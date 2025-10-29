@@ -3,6 +3,8 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session, joinedload
 from typing import Optional, List
 from datetime import datetime
+from pydantic import BaseModel, EmailStr, Field
+import logging
 from app.roles.models import Role
 from app.database import get_db
 from app.users import schemas
@@ -37,7 +39,10 @@ from app.users.services import UserService
 from app.auth.services import AuthService
 from app.email_service import EmailService
 
+import base64
+
 router = APIRouter(tags=["Users"])
+logger = logging.getLogger(__name__)
 
 def check_permission(current_user: dict, required_permission_id: int):
     """
@@ -878,3 +883,98 @@ def send_solicitud_completed_notification(
         payload.request_code
     )
     return {"success": True, "message": "Correo de solicitud completada encolado para envío"}
+
+
+# Nuevo endpoint para envío de facturas por email
+class SendInvoiceZipRequest(BaseModel):
+    """Schema para la solicitud de envío de factura por email."""
+    email: EmailStr = Field(..., description="Email del destinatario")
+    client_name: str = Field(..., min_length=1, max_length=200, description="Nombre del cliente")
+    invoice_number: str = Field(..., min_length=1, max_length=50, description="Número de factura")
+    invoice_date: str = Field(..., description="Fecha de la factura (formato DD/MM/YYYY)")
+    total_amount: str = Field(..., description="Monto total formateado")
+    zip_base64: str = Field(..., description="Contenido del ZIP codificado en base64")
+    zip_filename: str = Field(..., min_length=1, max_length=200, description="Nombre del archivo ZIP")
+    cufe: str = Field(None, description="Código CUFE de la factura")
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "email": "cliente@example.com",
+                "client_name": "Juan Pérez García",
+                "invoice_number": "FE-2024-001",
+                "invoice_date": "26/10/2024",
+                "total_amount": "$1.500.000 COP",
+                "zip_base64": "UEsDBBQAAAAIAG...",
+                "zip_filename": "Factura_FE-2024-001_REF123.zip",
+                "cufe": "abc123def456..."
+            }
+        }
+
+
+@router.post(
+    "/send-invoice-zip", 
+    status_code=200,
+    summary="Enviar factura por email",
+    description="Recibe un ZIP con PDF y XML de una factura y lo envía por correo electrónico"
+)
+async def send_invoice_zip_notification(
+    request: SendInvoiceZipRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """
+    Endpoint para enviar factura en formato ZIP por correo electrónico.
+    
+    Flujo:
+    1. Recibe ZIP codificado en base64
+    2. Decodifica el ZIP a bytes
+    3. Envía el email con el ZIP adjunto
+    4. Retorna resultado del envío
+    """
+    
+    try:
+        logger.info(f"[ENDPOINT] Recibida solicitud de envío para factura {request.invoice_number}")
+        logger.info(f"[ENDPOINT] Destinatario: {request.email}")
+        
+        # --- Decodificar ZIP desde base64 ---
+        try:
+            zip_bytes = base64.b64decode(request.zip_base64)
+            zip_size_kb = len(zip_bytes) / 1024
+            logger.info(f"[ENDPOINT] ZIP decodificado: {zip_size_kb:.2f} KB")
+        except Exception as decode_error:
+            logger.error(f"[ENDPOINT] Error al decodificar ZIP base64: {str(decode_error)}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Error al decodificar el archivo ZIP: {str(decode_error)}"
+            )
+        
+        # --- Enviar email con ZIP adjunto en background ---
+        email_service = EmailService()
+        
+        background_tasks.add_task(
+            email_service.send_invoice_zip_email,
+            request.email,
+            request.client_name,
+            request.invoice_number,
+            request.invoice_date,
+            request.total_amount,
+            zip_bytes,
+            request.zip_filename,
+            request.cufe
+        )
+        
+        logger.info(f"[ENDPOINT] ✓ Email encolado exitosamente para {request.email}")
+        return {
+            "success": True,
+            "message": f"Factura {request.invoice_number} encolada para envío a {request.email}"
+        }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ENDPOINT] Error inesperado: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error interno al procesar la solicitud: {str(e)}"
+        )
