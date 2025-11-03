@@ -679,6 +679,70 @@ class UserService:
                 }
             })
 
+    def get_user_id_by_document_number(self, document_number: str):
+        """Busca un usuario por su número de documento y retorna solo su ID.
+        
+        Retorna únicamente el campo id en formato {"success": True, "data": {"id": user_id}}.
+        Este método está diseñado para endpoints públicos sin autenticación.
+        """
+        try:
+            if not document_number:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "success": False,
+                        "data": {
+                            "title": "Error de validación",
+                            "message": "El número de documento no puede estar vacío"
+                        }
+                    }
+                )
+
+            try:
+                user = (
+                    self.db.query(User.id)
+                    .filter(User.document_number == document_number)
+                    .first()
+                )
+            except Exception as e:
+                if "NumericValueOutOfRange" in str(e):
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "success": False,
+                            "data": {
+                                "title": "Error de validación",
+                                "message": f"El número de documento '{document_number}' excede el límite permitido",
+                                "suggestion": "Los números de documento no deben exceder los 10 dígitos."
+                            }
+                        }
+                    )
+                raise
+
+            if not user:
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "success": False,
+                        "data": {
+                            "title": "No encontrado",
+                            "message": "No se encontró ningún usuario con el documento proporcionado."
+                        }
+                    }
+                )
+
+            return jsonable_encoder({"success": True, "data": {"id": user.id}})
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail={
+                "success": False,
+                "data": {
+                    "title": "Error de servidor",
+                    "message": str(e),
+                }
+            })
+
     def list_users_basic_by_ids(self, ids: List[int]):
         """Devuelve lista básica de usuarios para los IDs dados.
         Campos: id, name, first_last_name, second_last_name, document_number,
