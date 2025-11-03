@@ -487,6 +487,25 @@ async def get_user_by_document_number(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al buscar el usuario por documento: {str(e)}")
 
+@router.get("/by-document-for-job/{document_number}", response_model=dict)
+async def get_user_by_document_number_for_job(
+    document_number: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene únicamente el ID de un usuario por su número de documento.
+    
+    Endpoint público sin autenticación, diseñado para uso en procesos de trabajo.
+    Devuelve solo el campo id del usuario.
+    """
+    try:
+        user_service = UserService(db)
+        return user_service.get_user_id_by_document_number(document_number)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al buscar el usuario por documento: {str(e)}")
+
 @router.get("/{user_id}")
 def list_user(
     user_id: int, 
