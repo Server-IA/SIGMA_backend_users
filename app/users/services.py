@@ -1618,11 +1618,12 @@ class UserService:
                 }
             )
 
-    def create_employee(self, name: str, first_last_name: str, second_last_name: str,
+    def create_employee(self, name: str, first_last_name: str,
                         type_document_id: int, document_number: str, date_issuance_document: datetime,
                         birthday: datetime, gender_id: int, country: str, department: str,
-                        city: int, address: str, phone: str, admin_id: int, request: Request,
-                        current_user: dict, permission_id: int):
+                        city: int, address: str, admin_id: int, request: Request,
+                        current_user: dict, permission_id: int,
+                        second_last_name: Optional[str] = None, phone: Optional[str] = None):
         try:
             self.validate_unique_document(document_number)
 
