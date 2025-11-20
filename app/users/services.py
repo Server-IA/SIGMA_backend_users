@@ -594,7 +594,8 @@ class UserService:
         """Busca un usuario por su número de documento.
         
         Retorna los campos: id, name, first_last_name, second_last_name, document_number,
-        type_document (ID), type_document_name (nombre), email y phone.
+        type_document (ID y nombre), email, phone, birthday, gender (ID y nombre), country,
+        department y city.
         """
         try:
             if not document_number:
@@ -622,8 +623,15 @@ class UserService:
                         User.email,
                         User.phone,
                         User.address,
+                        User.birthday,
+                        User.gender_id,
+                        Gender.name.label("gender_name"),
+                        User.country,
+                        User.department,
+                        User.city,
                     )
                     .outerjoin(User.type_document)
+                    .outerjoin(User.gender)
                     .filter(User.document_number == document_number)
                     .first()
                 )
@@ -665,6 +673,12 @@ class UserService:
                 "email": row.email,
                 "phone": row.phone,
                 "address": row.address,
+                "birthday": row.birthday.strftime("%Y-%m-%d") if row.birthday else None,
+                "gender_id": row.gender_id,
+                "gender_name": row.gender_name,
+                "country": row.country,
+                "department": row.department,
+                "city": row.city,
             }
 
             return jsonable_encoder({"success": True, "data": user_dict})
