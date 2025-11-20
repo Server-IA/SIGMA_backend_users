@@ -14,6 +14,7 @@ from app.users.schemas import (
     AdminUserCreateRequest,
     AdminUserCreateResponse,
     AdminUserUpdateRequest,
+    EmployeeCreateRequest,
     ActivateAccountResponse,
     PreRegisterCompleteRequest,
     PreRegisterResponse,
@@ -280,6 +281,49 @@ def create_user_by_admin(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al crear el usuario: {str(e)}")
+
+
+@router.post("/admin/create-employee", response_model=AdminUserCreateResponse, status_code=status.HTTP_201_CREATED)
+def create_employee(
+    user_data: EmployeeCreateRequest, request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    permission_id = 3
+    """
+    Crea un nuevo empleado sin asignación de roles (vía Admin).
+    Campos requeridos:
+      - name, first_last_name, second_last_name,
+      - type_document_id, document_number, date_issuance_document,
+      - birthday, gender_id.
+    """
+    if not check_permission(current_user, permission_id):
+        raise HTTPException(status_code=403, detail="No tiene permisos para crear empleados")
+    try:
+        user_service = UserService(db)
+        return user_service.create_employee(
+            name=user_data.name,
+            first_last_name=user_data.first_last_name,
+            second_last_name=user_data.second_last_name,
+            type_document_id=user_data.type_document_id,
+            document_number=user_data.document_number,
+            date_issuance_document=user_data.date_issuance_document,
+            birthday=user_data.birthday,
+            gender_id=user_data.gender_id,
+            country=user_data.country,
+            department=user_data.department,
+            city=user_data.city,
+            address=user_data.address,
+            phone=user_data.phone,
+            admin_id=current_user["id"],
+            request=request,
+            current_user=current_user,
+            permission_id=permission_id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al crear el empleado: {str(e)}")
 
 
 @router.put("/admin/edit/{user_id}", summary="Editar información completa del usuario (Admin)")
