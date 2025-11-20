@@ -58,7 +58,7 @@ class EmployeeCreateRequest(BaseModel):
     department: str = Field(..., min_length=2, max_length=100, description="Departamento o provincia")
     city: int = Field(..., ge=1, description="Código del municipio")
     address: str = Field(..., min_length=5, max_length=150, description="Dirección completa del empleado")
-    phone: str = Field(..., min_length=7, max_length=20, description="Número de teléfono de contacto")
+    phone: Optional[str] = Field(None, min_length=7, max_length=15, description="Número de teléfono de contacto")
 
     @validator('document_number')
     def validate_document_number(cls, v):
@@ -70,6 +70,10 @@ class EmployeeCreateRequest(BaseModel):
     def validate_birthday(cls, v):
         if v > date.today():
             raise ValueError("La fecha de nacimiento no puede ser en el futuro")
+        today = date.today()
+        age = today.year - v.year - ((today.month, today.day) < (v.month, v.day))
+        if age < 18:
+            raise ValueError("El empleado debe ser mayor de edad (18 años)")
         return v
 
     @validator('date_issuance_document')
@@ -82,8 +86,12 @@ class EmployeeCreateRequest(BaseModel):
 
     @validator('phone')
     def validate_phone(cls, v):
-        if not re.fullmatch(r'[0-9+\-\s()]+', v):
-            raise ValueError("El número de teléfono contiene caracteres inválidos")
+        if v is None:
+            return v
+        if not v.isdigit():
+            raise ValueError("El número de teléfono debe contener solo dígitos")
+        if not 7 <= len(v) <= 15:
+            raise ValueError("El número de teléfono debe tener entre 7 y 15 dígitos")
         return v
 
 class AdminUserCreateResponse(BaseModel):
