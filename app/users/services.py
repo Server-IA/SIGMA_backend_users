@@ -1618,6 +1618,81 @@ class UserService:
                 }
             )
 
+    def create_employee(self, name: str, first_last_name: str, second_last_name: str,
+                        type_document_id: int, document_number: str, date_issuance_document: datetime,
+                        birthday: datetime, gender_id: int, country: str, department: str,
+                        city: int, address: str, phone: str, admin_id: int, request: Request,
+                        current_user: dict, permission_id: int):
+        try:
+            self.validate_unique_document(document_number)
+
+            db_user = User(
+                name=name,
+                first_last_name=first_last_name,
+                second_last_name=second_last_name,
+                type_document_id=type_document_id,
+                document_number=document_number,
+                date_issuance_document=date_issuance_document,
+                birthday=birthday,
+                gender_id=gender_id,
+                status_id=4,
+                country=country,
+                department=department,
+                city=city,
+                address=address,
+                phone=phone,
+            )
+
+            self.db.add(db_user)
+            self.db.commit()
+            self.db.refresh(db_user)
+
+            try:
+                actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                actor_name = current_user.get("name") if current_user else None
+                actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+
+                AuditClient(request).create(
+                    object_id=str(db_user.id),
+                    after=user_snapshot(db_user),
+                    actor_id=actor_id,
+                    actor_name=actor_name,
+                    actor_role=actor_role_name,
+                    permission_id=permission_id,
+                    module="users_management",
+                    submodule="users",
+                )
+            except Exception as e:
+                logging.warning(f"No se pudo emitir auditoría en create_employee: {e}")
+
+            notification_data = schemas.NotificationCreate(
+                user_id=admin_id,
+                title="Nuevo usuario creado",
+                message=f"Se ha creado un nuevo usuario: {db_user.name} {db_user.first_last_name}.",
+                type="user_creation"
+            )
+            self.create_notification(notification_data)
+
+            try:
+                create_user_in_external_app(db_user.id)
+            except Exception as e:
+                logging.error(f"Error al crear empleado en aplicación externa: {str(e)}")
+
+            return {"success": True, "message": "Usuario creado correctamente", "user_id": db_user.id}
+
+        except Exception as e:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "success": False,
+                    "data": {
+                        "title": "Error al crear usuario",
+                        "message": str(e),
+                    }
+                }
+            )
+
     def get_genders(self):
         """Obtiene todos los géneros disponibles en el sistema"""
         try:
