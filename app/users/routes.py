@@ -15,6 +15,7 @@ from app.users.schemas import (
     AdminUserCreateResponse,
     AdminUserUpdateRequest,
     EmployeeCreateRequest,
+    EmployeeUpdateRequest,
     ActivateAccountResponse,
     PreRegisterCompleteRequest,
     PreRegisterResponse,
@@ -324,6 +325,77 @@ def create_employee(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al crear el empleado: {str(e)}")
+
+
+@router.put("/admin/{employee_id}/update-employee/", response_model=AdminUserCreateResponse)
+def update_employee(
+    employee_id: int,
+    employee_data: EmployeeUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """
+    Actualiza la información de un empleado existente.
+    Campos actualizables:
+      - name, first_last_name, second_last_name,
+      - type_document_id, date_issuance_document,
+      - birthday, gender_id, country, department,
+      - city, address, phone
+    """
+    permission_id = 4  # users.edit permission
+    if not check_permission(current_user, permission_id):
+        raise HTTPException(status_code=403, detail="No tiene permisos para actualizar empleados")
+    
+    try:
+        user_service = UserService(db)
+        
+        # Verificar si el empleado existe
+        db_employee = db.query(User).filter(User.id == employee_id).first()
+        if not db_employee:
+            raise HTTPException(status_code=404, detail="Empleado no encontrado")
+        
+        # Preparar los campos para actualizar
+        update_fields = {
+            "name": employee_data.name,
+            "first_last_name": employee_data.first_last_name,
+            "second_last_name": employee_data.second_last_name,
+            "type_document_id": employee_data.type_document_id,
+            "date_issuance_document": employee_data.date_issuance_document,
+            "birthday": employee_data.birthday,
+            "gender_id": employee_data.gender_id,
+            "country": employee_data.country,
+            "department": employee_data.department,
+            "city": employee_data.city,
+            "address": employee_data.address,
+            "phone": employee_data.phone,
+        }
+        
+        # Actualizar el empleado
+        result = user_service.update_user(
+            user_id=employee_id,
+            admin_update=True,
+            request=request,
+            admin_id=current_user["id"],
+            current_user=current_user,
+            permission_id=permission_id,
+            **update_fields
+        )
+        
+        return {
+            "success": True,
+            "message": "Empleado actualizado exitosamente",
+            "user_id": employee_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al actualizar el empleado: {str(e)}"
+        )
 
 
 @router.put("/admin/edit/{user_id}", summary="Editar información completa del usuario (Admin)")
