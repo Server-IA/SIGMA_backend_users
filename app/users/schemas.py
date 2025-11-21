@@ -80,6 +80,50 @@ class EmployeeCreateRequest(BaseModel):
     def validate_issuance_date(cls, v, values):
         if v > date.today():
             raise ValueError("La fecha de expedición no puede ser en el futuro")
+        if 'birthday' in values and values.get('birthday') is not None:
+            if v < values['birthday']:
+                raise ValueError("La fecha de expedición no puede ser anterior a la fecha de nacimiento")
+        return v
+
+    @validator('phone')
+    def validate_phone(cls, v):
+        if v is None:
+            return v
+        if not v.isdigit():
+            raise ValueError("El número de teléfono debe contener solo dígitos")
+        if not 7 <= len(v) <= 15:
+            raise ValueError("El número de teléfono debe tener entre 7 y 15 dígitos")
+        return v
+
+class EmployeeUpdateRequest(BaseModel):
+    """Esquema para la actualización de empleados."""
+    name: str = Field(..., min_length=1, max_length=30, description="Nombres del empleado")
+    first_last_name: str = Field(..., min_length=1, max_length=30, description="Primer apellido")
+    second_last_name: Optional[str] = Field(None, max_length=30, description="Segundo apellido")
+    type_document_id: int = Field(..., description="ID del tipo de documento")
+    date_issuance_document: date = Field(..., description="Fecha de expedición del documento")
+    birthday: date = Field(..., description="Fecha de nacimiento")
+    gender_id: int = Field(..., description="ID del género (1=Hombre, 2=Mujer, 3=Otro)")
+    country: str = Field(..., min_length=2, max_length=100, description="País de residencia del empleado")
+    department: str = Field(..., min_length=2, max_length=100, description="Departamento o provincia")
+    city: int = Field(..., ge=1, description="Código del municipio")
+    address: str = Field(..., min_length=5, max_length=150, description="Dirección completa del empleado")
+    phone: Optional[str] = Field(None, min_length=7, max_length=15, description="Número de teléfono de contacto")
+
+    @validator('birthday')
+    def validate_birthday(cls, v):
+        if v > date.today():
+            raise ValueError("La fecha de nacimiento no puede ser en el futuro")
+        today = date.today()
+        age = today.year - v.year - ((today.month, today.day) < (v.month, v.day))
+        if age < 18:
+            raise ValueError("El empleado debe ser mayor de edad (18 años)")
+        return v
+
+    @validator('date_issuance_document')
+    def validate_issuance_date(cls, v, values):
+        if v > date.today():
+            raise ValueError("La fecha de expedición no puede ser en el futuro")
         if 'birthday' in values and v < values['birthday']:
             raise ValueError("La fecha de expedición no puede ser anterior a la fecha de nacimiento")
         return v
