@@ -10,9 +10,9 @@ services:
       - .env
     networks:
       - shared_net
-<<<<<<< HEAD
-      volumes:
-        - ".:/app"
+    volumes:
+      - ".:/app"
+
 networks:
   shared_net:
     external: true
