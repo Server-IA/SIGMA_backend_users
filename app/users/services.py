@@ -594,7 +594,8 @@ class UserService:
         """Busca un usuario por su número de documento.
         
         Retorna los campos: id, name, first_last_name, second_last_name, document_number,
-        type_document (ID), type_document_name (nombre), email y phone.
+        type_document (ID y nombre), email, phone, birthday, gender (ID y nombre), country,
+        department y city.
         """
         try:
             if not document_number:
@@ -622,8 +623,15 @@ class UserService:
                         User.email,
                         User.phone,
                         User.address,
+                        User.birthday,
+                        User.gender_id,
+                        Gender.name.label("gender_name"),
+                        User.country,
+                        User.department,
+                        User.city,
                     )
                     .outerjoin(User.type_document)
+                    .outerjoin(User.gender)
                     .filter(User.document_number == document_number)
                     .first()
                 )
@@ -665,6 +673,12 @@ class UserService:
                 "email": row.email,
                 "phone": row.phone,
                 "address": row.address,
+                "birthday": row.birthday.strftime("%Y-%m-%d") if row.birthday else None,
+                "gender_id": row.gender_id,
+                "gender_name": row.gender_name,
+                "country": row.country,
+                "department": row.department,
+                "city": row.city,
             }
 
             return jsonable_encoder({"success": True, "data": user_dict})
@@ -1602,6 +1616,82 @@ class UserService:
                 type="user_creation"
             )
             self.create_notification(notification_data)
+
+            return {"success": True, "message": "Usuario creado correctamente", "user_id": db_user.id}
+
+        except Exception as e:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "success": False,
+                    "data": {
+                        "title": "Error al crear usuario",
+                        "message": str(e),
+                    }
+                }
+            )
+
+    def create_employee(self, name: str, first_last_name: str,
+                        type_document_id: int, document_number: str, date_issuance_document: datetime,
+                        birthday: datetime, gender_id: int, country: str, department: str,
+                        city: int, address: str, admin_id: int, request: Request,
+                        current_user: dict, permission_id: int,
+                        second_last_name: Optional[str] = None, phone: Optional[str] = None):
+        try:
+            self.validate_unique_document(document_number)
+
+            db_user = User(
+                name=name,
+                first_last_name=first_last_name,
+                second_last_name=second_last_name,
+                type_document_id=type_document_id,
+                document_number=document_number,
+                date_issuance_document=date_issuance_document,
+                birthday=birthday,
+                gender_id=gender_id,
+                status_id=4,
+                country=country,
+                department=department,
+                city=city,
+                address=address,
+                phone=phone,
+            )
+
+            self.db.add(db_user)
+            self.db.commit()
+            self.db.refresh(db_user)
+
+            try:
+                actor_id = str(current_user.get("id")) if current_user and current_user.get("id") is not None else None
+                actor_name = current_user.get("name") if current_user else None
+                actor_role_name, _ = pick_primary_role_and_ids_from_current_user(current_user or {})
+
+                AuditClient(request).create(
+                    object_id=str(db_user.id),
+                    after=user_snapshot(db_user),
+                    actor_id=actor_id,
+                    actor_name=actor_name,
+                    actor_role=actor_role_name,
+                    permission_id=permission_id,
+                    module="users_management",
+                    submodule="users",
+                )
+            except Exception as e:
+                logging.warning(f"No se pudo emitir auditoría en create_employee: {e}")
+
+            notification_data = schemas.NotificationCreate(
+                user_id=admin_id,
+                title="Nuevo usuario creado",
+                message=f"Se ha creado un nuevo usuario: {db_user.name} {db_user.first_last_name}.",
+                type="user_creation"
+            )
+            self.create_notification(notification_data)
+
+            try:
+                create_user_in_external_app(db_user.id)
+            except Exception as e:
+                logging.error(f"Error al crear empleado en aplicación externa: {str(e)}")
 
             return {"success": True, "message": "Usuario creado correctamente", "user_id": db_user.id}
 
