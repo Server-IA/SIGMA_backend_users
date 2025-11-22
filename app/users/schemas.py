@@ -16,7 +16,7 @@ class AdminUserCreateRequest(BaseModel):
     """
     name: str = Field(..., min_length=1, max_length=30, description="Nombres del usuario")
     first_last_name: str = Field(..., min_length=1, max_length=30, description="Primer apellido")
-    second_last_name: str = Field(..., min_length=1, max_length=30, description="Segundo apellido")
+    second_last_name: Optional[str] = Field(None, max_length=30, description="Segundo apellido")
     type_document_id: int = Field(..., description="ID del tipo de documento")
     document_number: str = Field(..., max_length=30, description="Número de documento")
     date_issuance_document: date = Field(..., description="Fecha de expedición del documento")
@@ -42,6 +42,100 @@ class AdminUserCreateRequest(BaseModel):
             raise ValueError("La fecha de expedición no puede ser en el futuro")
         if 'birthday' in values and v < values['birthday']:
             raise ValueError("La fecha de expedición no puede ser anterior a la fecha de nacimiento")
+        return v
+
+class EmployeeCreateRequest(BaseModel):
+    """Esquema para la creación de empleados sin asignación de roles."""
+    name: str = Field(..., min_length=1, max_length=30, description="Nombres del empleado")
+    first_last_name: str = Field(..., min_length=1, max_length=30, description="Primer apellido")
+    second_last_name: Optional[str] = Field(None, max_length=30, description="Segundo apellido")
+    type_document_id: int = Field(..., description="ID del tipo de documento")
+    document_number: str = Field(..., max_length=30, description="Número de documento")
+    date_issuance_document: date = Field(..., description="Fecha de expedición del documento")
+    birthday: date = Field(..., description="Fecha de nacimiento")
+    gender_id: int = Field(..., description="ID del género (1=Hombre, 2=Mujer, 3=Otro)")
+    country: str = Field(..., min_length=2, max_length=100, description="País de residencia del empleado")
+    department: str = Field(..., min_length=2, max_length=100, description="Departamento o provincia")
+    city: int = Field(..., ge=1, description="Código del municipio")
+    address: str = Field(..., min_length=5, max_length=150, description="Dirección completa del empleado")
+    phone: Optional[str] = Field(None, min_length=7, max_length=15, description="Número de teléfono de contacto")
+
+    @validator('document_number')
+    def validate_document_number(cls, v):
+        if not v.isdigit():
+            raise ValueError("El número de documento debe contener solo dígitos")
+        return v
+
+    @validator('birthday')
+    def validate_birthday(cls, v):
+        if v > date.today():
+            raise ValueError("La fecha de nacimiento no puede ser en el futuro")
+        today = date.today()
+        age = today.year - v.year - ((today.month, today.day) < (v.month, v.day))
+        if age < 18:
+            raise ValueError("El empleado debe ser mayor de edad (18 años)")
+        return v
+
+    @validator('date_issuance_document')
+    def validate_issuance_date(cls, v, values):
+        if v > date.today():
+            raise ValueError("La fecha de expedición no puede ser en el futuro")
+        if 'birthday' in values and values.get('birthday') is not None:
+            if v < values['birthday']:
+                raise ValueError("La fecha de expedición no puede ser anterior a la fecha de nacimiento")
+        return v
+
+    @validator('phone')
+    def validate_phone(cls, v):
+        if v is None:
+            return v
+        if not v.isdigit():
+            raise ValueError("El número de teléfono debe contener solo dígitos")
+        if not 7 <= len(v) <= 15:
+            raise ValueError("El número de teléfono debe tener entre 7 y 15 dígitos")
+        return v
+
+class EmployeeUpdateRequest(BaseModel):
+    """Esquema para la actualización de empleados."""
+    name: str = Field(..., min_length=1, max_length=30, description="Nombres del empleado")
+    first_last_name: str = Field(..., min_length=1, max_length=30, description="Primer apellido")
+    second_last_name: Optional[str] = Field(None, max_length=30, description="Segundo apellido")
+    type_document_id: int = Field(..., description="ID del tipo de documento")
+    date_issuance_document: date = Field(..., description="Fecha de expedición del documento")
+    birthday: date = Field(..., description="Fecha de nacimiento")
+    gender_id: int = Field(..., description="ID del género (1=Hombre, 2=Mujer, 3=Otro)")
+    country: str = Field(..., min_length=2, max_length=100, description="País de residencia del empleado")
+    department: str = Field(..., min_length=2, max_length=100, description="Departamento o provincia")
+    city: int = Field(..., ge=1, description="Código del municipio")
+    address: str = Field(..., min_length=5, max_length=150, description="Dirección completa del empleado")
+    phone: Optional[str] = Field(None, min_length=7, max_length=15, description="Número de teléfono de contacto")
+
+    @validator('birthday')
+    def validate_birthday(cls, v):
+        if v > date.today():
+            raise ValueError("La fecha de nacimiento no puede ser en el futuro")
+        today = date.today()
+        age = today.year - v.year - ((today.month, today.day) < (v.month, v.day))
+        if age < 18:
+            raise ValueError("El empleado debe ser mayor de edad (18 años)")
+        return v
+
+    @validator('date_issuance_document')
+    def validate_issuance_date(cls, v, values):
+        if v > date.today():
+            raise ValueError("La fecha de expedición no puede ser en el futuro")
+        if 'birthday' in values and v < values['birthday']:
+            raise ValueError("La fecha de expedición no puede ser anterior a la fecha de nacimiento")
+        return v
+
+    @validator('phone')
+    def validate_phone(cls, v):
+        if v is None:
+            return v
+        if not v.isdigit():
+            raise ValueError("El número de teléfono debe contener solo dígitos")
+        if not 7 <= len(v) <= 15:
+            raise ValueError("El número de teléfono debe tener entre 7 y 15 dígitos")
         return v
 
 class AdminUserCreateResponse(BaseModel):
@@ -227,7 +321,7 @@ class AdminUserUpdateRequest(BaseModel):
     """
     name: str = Field(..., min_length=1, max_length=30, description="Nombres del usuario")
     first_last_name: str = Field(..., min_length=1, max_length=30, description="Primer apellido")
-    second_last_name: str = Field(..., min_length=1, max_length=30, description="Segundo apellido")
+    second_last_name: Optional[str] = Field(None, max_length=30, description="Segundo apellido")
     type_document_id: int = Field(..., description="ID del tipo de documento")
     document_number: str = Field(..., max_length=30, description="Número de documento")
     date_issuance_document: date = Field(..., description="Fecha de expedición del documento")
@@ -289,3 +383,87 @@ class MarkReadRequest(BaseModel):
     """Schema for marking notifications as read"""
     notification_ids: Optional[List[int]] = None
     mark_all: bool = False
+
+class TechnicianNotificationRequest(BaseModel):
+    """Request schema for sending technician notification email - El técnico debe estar registrado en la base de datos"""
+    scheduled_at: str = Field(..., description="Fecha y hora programada en formato ISO 8601")
+    details: str = Field(..., min_length=1, description="Detalles de la programación asignada")
+    assigned_technician: int = Field(..., description="ID del técnico asignado (debe existir en la base de datos)")
+    technician_email: Optional[str] = Field(None, description="Email del técnico (opcional, se obtiene de la BD si no se proporciona)")
+    technician_name: Optional[str] = Field(None, description="Nombre del técnico (opcional, se obtiene de la BD si no se proporciona)")
+    
+    @validator('scheduled_at')
+    def validate_scheduled_at(cls, v):
+        try:
+            # Validar que sea una fecha ISO válida
+            datetime.fromisoformat(v.replace('Z', '+00:00'))
+            return v
+        except ValueError:
+            raise ValueError("Formato de fecha inválido. Use formato ISO 8601 (ej: 2025-12-03T23:30:32Z)")
+
+class TechnicianNotificationResponse(BaseModel):
+    """Response schema for technician notification email"""
+    success: bool
+    message: str
+    technician_email: Optional[str] = None
+
+class UserUpdateRequest(BaseModel):
+    """Esquema para actualizar la información del usuario"""
+    type_document_id: Optional[int] = Field(None, description="ID del tipo de documento")
+    document_number: Optional[str] = Field(None, max_length=30, description="Número de documento")
+    name: Optional[str] = Field(None, min_length=1, max_length=30, description="Nombres del usuario")
+    first_last_name: Optional[str] = Field(None, min_length=1, max_length=30, description="Primer apellido")
+    second_last_name: Optional[str] = Field(None, max_length=30, description="Segundo apellido")
+    email: Optional[str] = Field(None, description="Correo electrónico")
+    phone: Optional[str] = Field(None, description="Número de teléfono")
+    address: Optional[str] = Field(None, description="Dirección")
+
+    @validator('document_number')
+    def validate_document_number(cls, v):
+        if v is not None and not v.isdigit():
+            raise ValueError("El número de documento debe contener solo dígitos")
+        return v
+
+    @validator('email')
+    def validate_email(cls, v):
+        if v is not None and "@" not in v:
+            raise ValueError("El correo electrónico no es válido")
+        return v
+
+
+class UserByDocumentRequest(BaseModel):
+    """Solicitud para buscar usuario por número de documento"""
+    document_number: str = Field(..., description="Número de documento a buscar")
+
+class BasicUserIdsRequest(BaseModel):
+    """Solicitud para listar usuarios básicos por una lista de IDs"""
+    ids: List[int]
+
+
+class CancellationNotificationRequest(BaseModel):
+    """Payload para notificar la cancelación de una solicitud al cliente"""
+    email: EmailStr
+    client_name: str
+    reason: str
+    request_code: str
+
+class PresolicitudConfirmationRequest(BaseModel):
+    """Payload para notificar la confirmación de una pre-solicitud al cliente"""
+    email: EmailStr
+    client_name: str
+    message: str
+    request_code: str
+
+class SolicitudCompletedRequest(BaseModel):
+    """Payload para notificar la finalización de una solicitud al cliente"""
+    email: EmailStr
+    client_name: str
+    message: str
+    request_code: str 
+    
+class SolicitudCreatedRequest(BaseModel):
+    """Payload para notificar la creación de una solicitud al cliente"""
+    email: EmailStr
+    client_name: str
+    message: str
+    request_code: str

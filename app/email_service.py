@@ -4,6 +4,7 @@ import ssl
 from email.message import EmailMessage
 from typing import Optional
 import logging
+from datetime import datetime
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -62,10 +63,10 @@ class EmailService:
                 
                 <div style="text-align: center; margin: 30px 0;">
                     <a href="{reset_url}" 
-                       style="background-color: #007bff; color: white; padding: 15px 40px; 
-                              text-decoration: none; border-radius: 8px; font-weight: bold;
-                              display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                              transition: all 0.3s ease; min-width: 200px;">
+                        style="background-color: #007bff; color: white; padding: 15px 40px; 
+                                text-decoration: none; border-radius: 8px; font-weight: bold;
+                                display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                                transition: all 0.3s ease; min-width: 200px;">
                         Restablecer Contraseña
                     </a>
                 </div>
@@ -156,10 +157,10 @@ class EmailService:
                 
                 <div style="text-align: center; margin: 30px 0;">
                     <a href="{activation_url}" 
-                       style="background-color: #28a745; color: white; padding: 15px 40px; 
-                              text-decoration: none; border-radius: 8px; font-weight: bold;
-                              display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                              transition: all 0.3s ease; min-width: 200px;">
+                        style="background-color: #28a745; color: white; padding: 15px 40px; 
+                                text-decoration: none; border-radius: 8px; font-weight: bold;
+                                display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                                transition: all 0.3s ease; min-width: 200px;">
                         Activar Mi Cuenta
                     </a>
                 </div>
@@ -344,4 +345,700 @@ class EmailService:
                 return True
         except Exception as e:
             logger.error(f"Error al enviar correo de activación de pre-registro: {str(e)}")
+            return False
+
+    def send_technician_notification_email(self, to_email: str, technician_name: str, scheduled_at: str, details: str) -> bool:
+        """
+        Envía correo de notificación de programación de mantenimiento asignada al técnico
+        """
+        from datetime import datetime
+        
+        # Formatear la fecha para que sea más legible
+        try:
+            # Parsear la fecha ISO (ya viene en formato correcto desde Django)
+            scheduled_datetime = datetime.fromisoformat(scheduled_at)
+            
+            # Mapeo de meses en español
+            meses_es = {
+                1: "enero", 2: "febrero", 3: "marzo", 4: "abril",
+                5: "mayo", 6: "junio", 7: "julio", 8: "agosto",
+                9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre"
+            }
+            
+            # Formatear para mostrar en español
+            day = scheduled_datetime.day
+            month = meses_es[scheduled_datetime.month]
+            year = scheduled_datetime.year
+            hour = scheduled_datetime.strftime("%H:%M")
+            
+            formatted_datetime = f"{day} de {month} de {year} a las {hour}"
+        except Exception as e:
+            print(f"[ERROR] Error formateando fecha: {e}")
+            formatted_datetime = scheduled_at
+        
+        subject = "Nueva Programación de Mantenimiento Asignada - Sigma"
+        body = f"""
+        Hola {technician_name},
+
+        Se te ha asignado una nueva programación de mantenimiento en Sigma.
+
+        Fecha y hora programada: {formatted_datetime}
+        
+        Detalles de la programación:
+        {details}
+
+        Saludos,
+        Equipo de Sigma
+        """
+        
+        html_body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
+            <div style="background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <h2 style="color: #333; margin-bottom: 20px;">Hola {technician_name},</h2>
+                
+                <p style="color: #555; line-height: 1.6; margin-bottom: 20px;">
+                    Se te ha asignado una nueva programación de mantenimiento en Sigma.
+                </p>
+                
+                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                    <h3 style="color: #007bff; margin-top: 0; margin-bottom: 15px;">📅 Información de la Cita</h3>
+                    <p style="margin: 5px 0; color: #333;"><strong>Fecha y hora:</strong> {formatted_datetime}</p>
+                </div>
+                
+                <div style="background-color: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ffc107;">
+                    <h3 style="color: #856404; margin-top: 0; margin-bottom: 15px;">🔧 Detalles de la Programación</h3>
+                    <p style="margin: 0; color: #856404; line-height: 1.6;">{details}</p>
+                </div>
+                
+                <p style="color: #666; font-size: 14px; margin-bottom: 30px;">
+                    Por favor, confirma tu disponibilidad para esta fecha.
+                </p>
+                
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+                <p style="color: #999; font-size: 12px; text-align: center;">
+                    Saludos,<br>
+                    Equipo de Sigma
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Crear el mensaje de email
+        em = EmailMessage()
+        em["From"] = self.sender_email
+        em["To"] = to_email
+        em["Subject"] = subject
+        em.set_content(body)
+        em.add_alternative(html_body, subtype="html")
+        
+        # Enviar el email
+        try:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
+                smtp.login(self.sender_email, self.sender_password)
+                smtp.sendmail(self.sender_email, to_email, em.as_string())
+                logger.info(f"Correo de notificación de técnico enviado a {to_email}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Error al enviar correo de notificación de técnico: {str(e)}")
+            return False
+
+    def send_cancellation_notification_email(self, to_email: str, client_name: str, reason: str, request_code: str) -> bool:
+        """
+        Envía un correo notificando al cliente que su solicitud fue cancelada.
+
+        Parámetros:
+        - to_email: correo del cliente
+        - client_name: nombre del cliente
+        - reason: motivo de la cancelación
+        - request_code: código de la solicitud cancelada
+        """
+        subject = "Notificación: Cancelación de solicitud - Sigma"
+        body = f"""
+        Hola {client_name},
+
+        Te informamos que tu solicitud con código {request_code} ha sido cancelada.
+
+        Motivo:
+        {reason}
+
+        Si crees que esto es un error o necesitas más información, por favor contáctanos.
+
+        Saludos,
+        Equipo de Sigma
+        """
+
+        # Contenido HTML más presentable
+        html_body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
+            <div style="background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <h2 style="color: #333; margin-bottom: 20px;">Hola {client_name},</h2>
+                <p style="color: #555; line-height: 1.6; margin-bottom: 10px;">Te informamos que tu solicitud <strong>{request_code}</strong> ha sido <strong>cancelada</strong>.</p>
+                <div style="background-color: #fff3cd; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #ffc107;">
+                    <p style="margin: 0; color: #856404; line-height: 1.6;"><strong>Motivo:</strong><br>{reason}</p>
+                </div>
+                <p style="color: #666; font-size: 14px; margin-bottom: 20px;">Si crees que esto es un error o necesitas más información, por favor responde a este correo o visita nuestro centro de ayuda.</p>
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+                <p style="color: #999; font-size: 12px; text-align: center;">Saludos,<br>Equipo de Sigma</p>
+            </div>
+        </body>
+        </html>
+        """
+
+        em = EmailMessage()
+        em["From"] = self.sender_email
+        em["To"] = to_email
+        em["Subject"] = subject
+        em.set_content(body)
+        em.add_alternative(html_body, subtype="html")
+
+        try:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
+                smtp.login(self.sender_email, self.sender_password)
+                smtp.sendmail(self.sender_email, to_email, em.as_string())
+                logger.info(f"Correo de cancelación enviado a {to_email} para solicitud {request_code}")
+                return True
+        except Exception as e:
+            logger.error(f"Error al enviar correo de cancelación para {to_email}: {str(e)}")
+            return False
+
+    def send_presolicitud_confirmation_email(self, to_email: str, client_name: str, message: str, request_code: str) -> bool:
+        """
+        Envía un correo de confirmación de pre-solicitud al cliente.
+
+        Parámetros:
+        - to_email: correo electrónico del cliente
+        - client_name: nombre del cliente
+        - message: mensaje personalizado de confirmación
+        - request_code: código de la pre-solicitud
+        """
+        subject = f"Confirmación de Pre-solicitud - {request_code}"
+        
+        # Cuerpo del correo en texto plano
+        body = f"""
+        Hola {client_name},
+
+        {message}
+
+        Código de solicitud: {request_code}
+
+        Si tienes alguna pregunta o necesitas más información, no dudes en contactarnos.
+
+        Saludos,
+        Equipo de Sigma
+        """
+
+        # Contenido HTML con el mismo estilo que el correo de cancelación
+        html_body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
+            <div style="background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <h2 style="color: #333; margin-bottom: 20px;">Hola {client_name},</h2>
+                <p style="color: #555; line-height: 1.6; margin-bottom: 20px;">{message}</p>
+                <div style="background-color: #e7f5ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #4dabf7;">
+                    <p style="margin: 0; color: #0c5460; line-height: 1.6; font-weight: 500;">
+                        Código de solicitud: <span style="color: #1864ab;">{request_code}</span>
+                    </p>
+                </div>
+                <p style="color: #666; font-size: 14px; margin-bottom: 20px;">
+                    Si tienes alguna pregunta o necesitas más información, no dudes en respondernos a este correo o visitar nuestro centro de ayuda.
+                </p>
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+                <p style="color: #999; font-size: 12px; text-align: center;">
+                    Saludos,<br>Equipo de Sigma
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+
+        em = EmailMessage()
+        em["From"] = self.sender_email
+        em["To"] = to_email
+        em["Subject"] = subject
+        em.set_content(body)
+        em.add_alternative(html_body, subtype="html")
+
+        try:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
+                smtp.login(self.sender_email, self.sender_password)
+                smtp.sendmail(self.sender_email, to_email, em.as_string())
+                logger.info(f"Correo de confirmación de pre-solicitud enviado a {to_email} para la solicitud {request_code}")
+                return True
+        except Exception as e:
+            logger.error(f"Error al enviar correo de confirmación de pre-solicitud a {to_email}: {str(e)}")
+            return False
+
+    def send_solicitud_completed_email(self, to_email: str, client_name: str, message: str, request_code: str) -> bool:
+        """
+        Envía un correo de notificación al cliente cuando se completa una solicitud.
+
+        Parámetros:
+        - to_email: correo electrónico del cliente
+        - client_name: nombre del cliente
+        - message: mensaje personalizado sobre la finalización
+        - request_code: código de la solicitud
+        """
+        subject = f"Solicitud Completada - {request_code}"
+        
+        # Cuerpo del correo en texto plano
+        body = f"""
+        Hola {client_name},
+
+        ¡Tu solicitud ha sido completada exitosamente!
+
+        {message}
+
+        Código de solicitud: {request_code}
+
+        Gracias por confiar en nuestros servicios. Si tienes alguna pregunta o comentario, no dudes en contactarnos.
+
+        Saludos,
+        Equipo de Sigma
+        """
+
+        # Contenido HTML con diseño profesional
+        html_body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
+            <div style="background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <div style="text-align: center; margin-bottom: 30px;">
+                    <h2 style="color: #28a745; margin-bottom: 10px;">✅ ¡Solicitud Completada!</h2>
+                </div>
+                
+                <h3 style="color: #333; margin-bottom: 20px;">Hola {client_name},</h3>
+                
+                <p style="color: #555; line-height: 1.6; margin-bottom: 20px;">
+                    Nos complace informarte que tu solicitud ha sido <strong>completada exitosamente</strong>.
+                </p>
+                
+                <p style="color: #555; line-height: 1.6; margin-bottom: 20px;">
+                    {message}
+                </p>
+                
+                <div style="background-color: #d4edda; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #28a745;">
+                    <p style="margin: 0; color: #155724; line-height: 1.6; font-weight: 500;">
+                        📋 Código de solicitud: <span style="color: #0f5132; font-weight: bold;">{request_code}</span>
+                    </p>
+                </div>
+                
+                <p style="color: #666; font-size: 14px; margin-bottom: 20px;">
+                    Gracias por confiar en nuestros servicios. Si tienes alguna pregunta o comentario sobre el servicio realizado, 
+                    no dudes en respondernos a este correo.
+                </p>
+                
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+                <p style="color: #999; font-size: 12px; text-align: center;">
+                    Saludos,<br>Equipo de Sigma
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+
+        em = EmailMessage()
+        em["From"] = self.sender_email
+        em["To"] = to_email
+        em["Subject"] = subject
+        em.set_content(body)
+        em.add_alternative(html_body, subtype="html")
+
+        try:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
+                smtp.login(self.sender_email, self.sender_password)
+                smtp.sendmail(self.sender_email, to_email, em.as_string())
+                logger.info(f"Correo de solicitud completada enviado a {to_email} para la solicitud {request_code}")
+                return True
+        except Exception as e:
+            logger.error(f"Error al enviar correo de solicitud completada a {to_email}: {str(e)}")
+            return False
+    
+    def send_solicitud_created_email(self, to_email: str, client_name: str, message: str, request_code: str) -> bool:
+        """
+        Envía un correo de notificación al cliente cuando se crea una solicitud.
+
+        Parámetros:
+        - to_email: correo electrónico del cliente
+        - client_name: nombre del cliente
+        - message: mensaje personalizado sobre la creación
+        - request_code: código de la solicitud
+        """
+        subject = f"Nueva Solicitud Creada - {request_code}"
+        
+        # Cuerpo del correo en texto plano
+        body = f"""
+        Hola {client_name},
+
+        Tu solicitud ha sido creada exitosamente.
+
+        {message}
+
+        Código de solicitud: {request_code}
+
+        Gracias por elegir nuestros servicios. Te mantendremos informado sobre el progreso de tu solicitud.
+
+        Saludos,
+        Equipo de Sigma
+        """
+
+        # Contenido HTML con diseño profesional
+        html_body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
+            <div style="background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <div style="text-align: center; margin-bottom: 30px;">
+                    <h2 style="color: #007bff; margin-bottom: 10px;">📋 Nueva Solicitud Creada</h2>
+                </div>
+                
+                <h3 style="color: #333; margin-bottom: 20px;">Hola {client_name},</h3>
+                
+                <p style="color: #555; line-height: 1.6; margin-bottom: 20px;">
+                    Nos complace informarte que tu solicitud ha sido <strong>creada exitosamente</strong>.
+                </p>
+                
+                <p style="color: #555; line-height: 1.6; margin-bottom: 20px;">
+                    {message}
+                </p>
+                
+                <div style="background-color: #e7f5ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #007bff;">
+                    <p style="margin: 0; color: #0c5460; line-height: 1.6; font-weight: 500;">
+                        📋 Código de solicitud: <span style="color: #0056b3; font-weight: bold;">{request_code}</span>
+                    </p>
+                </div>
+                
+                <p style="color: #666; font-size: 14px; margin-bottom: 20px;">
+                    Gracias por elegir nuestros servicios. Te mantendremos informado sobre el progreso de tu solicitud y cualquier actualización importante.
+                </p>
+                
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+                <p style="color: #999; font-size: 12px; text-align: center;">
+                    Saludos,<br>Equipo de Sigma
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+
+        em = EmailMessage()
+        em["From"] = self.sender_email
+        em["To"] = to_email
+        em["Subject"] = subject
+        em.set_content(body)
+        em.add_alternative(html_body, subtype="html")
+
+        try:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
+                smtp.login(self.sender_email, self.sender_password)
+                smtp.sendmail(self.sender_email, to_email, em.as_string())
+                logger.info(f"Correo de solicitud creada enviado a {to_email} para la solicitud {request_code}")
+                return True
+        except Exception as e:
+            logger.error(f"Error al enviar correo de solicitud creada a {to_email}: {str(e)}")
+            return False
+    
+    def send_invoice_zip_email(
+        self, 
+        to_email: str, 
+        client_name: str,
+        invoice_number: str,
+        invoice_date: str,
+        total_amount: str,
+        zip_data: bytes,
+        zip_filename: str,
+        cufe: str = None
+    ) -> bool:
+        """
+        Envía un correo con la factura en formato ZIP (PDF + XML) adjunto.
+        El ZIP se recibe como bytes y se adjunta directamente sin almacenamiento.
+        
+        Args:
+            to_email: Email del cliente destinatario
+            client_name: Nombre completo del cliente
+            invoice_number: Número de la factura
+            invoice_date: Fecha de emisión de la factura (formato DD/MM/YYYY)
+            total_amount: Monto total formateado (ej: "$1.234.567 COP")
+            zip_data: Contenido del ZIP en bytes
+            zip_filename: Nombre del archivo ZIP
+            cufe: Código CUFE de la factura (opcional)
+            
+        Returns:
+            bool: True si el email se envió exitosamente, False en caso contrario
+        """
+        
+        try:
+            logger.info(f"[EMAIL SERVICE] Preparando envío de factura {invoice_number} a {to_email}")
+            
+            # --- Asunto del correo ---
+            subject = f"Factura Electrónica #{invoice_number} - Sigma"
+            
+            # --- Cuerpo de texto plano (fallback) ---
+            body = f"""
+Estimado/a {client_name},
+
+Adjunto encontrará su factura electrónica #{invoice_number} en formato comprimido (ZIP).
+
+Detalles de la factura:
+- Número: {invoice_number}
+- Fecha: {invoice_date}
+- Monto Total: {total_amount}
+{f'- CUFE: {cufe}' if cufe else ''}
+
+El archivo ZIP contiene:
+✓ Factura en formato PDF (para visualización e impresión)
+✓ Factura en formato XML (para validación ante la DIAN)
+
+Para acceder a los documentos, simplemente descomprima el archivo adjunto.
+
+Gracias por su preferencia.
+
+Atentamente,
+Equipo de Sigma
+
+---
+Este es un correo automático, por favor no responder.
+            """
+            
+            # --- Cuerpo HTML (principal) ---
+            html_body = f"""
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }}
+        .email-container {{
+            max-width: 600px;
+            margin: 20px auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }}
+        .header {{
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }}
+        .header h1 {{
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+        }}
+        .header p {{
+            margin: 10px 0 0 0;
+            font-size: 18px;
+            opacity: 0.95;
+        }}
+        .content {{
+            padding: 30px;
+        }}
+        .greeting {{
+            font-size: 16px;
+            margin-bottom: 20px;
+        }}
+        .invoice-details {{
+            background-color: #f8f9fa;
+            padding: 25px;
+            margin: 25px 0;
+            border-left: 4px solid #3498db;
+            border-radius: 4px;
+        }}
+        .invoice-details h3 {{
+            margin-top: 0;
+            color: #2c3e50;
+            font-size: 18px;
+            margin-bottom: 15px;
+        }}
+        .detail-row {{
+            padding: 10px 0;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+        .detail-row:last-child {{
+            border-bottom: none;
+        }}
+        .detail-label {{
+            font-weight: 600;
+            color: #555;
+            flex-shrink: 0;
+            margin-right: 15px;
+        }}
+        .detail-value {{
+            text-align: right;
+            color: #333;
+        }}
+        .detail-value.total {{
+            font-size: 18px;
+            font-weight: 700;
+            color: #27ae60;
+        }}
+        .detail-value.cufe {{
+            font-size: 11px;
+            word-break: break-all;
+            font-family: monospace;
+            background-color: #ecf0f1;
+            padding: 5px;
+            border-radius: 3px;
+        }}
+        .zip-info {{
+            background: linear-gradient(135deg, #e8f4f8 0%, #d5e9f0 100%);
+            padding: 20px;
+            border-radius: 6px;
+            margin: 25px 0;
+        }}
+        .zip-info h4 {{
+            margin-top: 0;
+            color: #2c3e50;
+            font-size: 16px;
+            margin-bottom: 12px;
+        }}
+        .zip-info ul {{
+            margin: 0;
+            padding-left: 25px;
+            list-style-type: none;
+        }}
+        .zip-info ul li {{
+            margin: 8px 0;
+            position: relative;
+        }}
+        .zip-info ul li:before {{
+            content: "✓";
+            position: absolute;
+            left: -20px;
+            color: #27ae60;
+            font-weight: bold;
+        }}
+        .zip-info .note {{
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #b8d4e0;
+            font-style: italic;
+            color: #555;
+            font-size: 14px;
+        }}
+        .footer {{
+            text-align: center;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-top: 2px solid #e0e0e0;
+        }}
+        .footer p {{
+            margin: 5px 0;
+            color: #777;
+            font-size: 12px;
+        }}
+        .footer .copyright {{
+            margin-top: 10px;
+            font-weight: 500;
+        }}
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <h1>📄 Factura Electrónica</h1>
+            <p>#{invoice_number}</p>
+        </div>
+        
+        <div class="content">
+            <p class="greeting">Estimado/a <strong>{client_name}</strong>,</p>
+            
+            <p>Adjunto encontrará su factura electrónica en formato comprimido (ZIP).</p>
+            
+            <div class="invoice-details">
+                <h3>📋 Detalles de la Factura</h3>
+                <div class="detail-row">
+                    <span class="detail-label">Número de Factura:</span>
+                    <span class="detail-value">{invoice_number}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Fecha de Emisión:</span>
+                    <span class="detail-value">{invoice_date}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Monto Total:</span>
+                    <span class="detail-value total">{total_amount}</span>
+                </div>
+                {f'''<div class="detail-row">
+                    <span class="detail-label">CUFE:</span>
+                    <span class="detail-value cufe">{cufe}</span>
+                </div>''' if cufe else ''}
+            </div>
+            
+            <div class="zip-info">
+                <h4>📦 Contenido del Archivo Adjunto</h4>
+                <ul>
+                    <li><strong>PDF:</strong> Representación visual de la factura para impresión</li>
+                    <li><strong>XML:</strong> Archivo electrónico para validación DIAN</li>
+                </ul>
+                <p class="note">
+                    Descomprima el archivo ZIP adjunto para acceder a ambos documentos. 
+                    Ambos archivos tienen el mismo nombre base para facilitar su identificación.
+                </p>
+            </div>
+            
+            <p>Gracias por su preferencia.</p>
+            <p style="margin-top: 20px;">Atentamente,<br><strong>Equipo de Sigma</strong></p>
+        </div>
+        
+        <div class="footer">
+            <p>Este es un correo automático, por favor no responder.</p>
+            <p class="copyright">&copy; {datetime.now().year} Sigma - Todos los derechos reservados</p>
+        </div>
+    </div>
+</body>
+</html>
+            """
+            
+            # --- Crear mensaje de email ---
+            em = EmailMessage()
+            em["From"] = self.sender_email
+            em["To"] = to_email
+            em["Subject"] = subject
+            
+            em.set_content(body)  
+            em.add_alternative(html_body, subtype="html")
+            
+            em.add_attachment(
+                zip_data, 
+                maintype='application',
+                subtype='zip',
+                filename=zip_filename,
+                disposition='attachment'
+            )
+            
+            logger.info(f"[EMAIL SERVICE] Email preparado con adjunto ZIP de {len(zip_data) / 1024:.2f} KB")
+            
+            # --- Enviar el email ---
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
+                smtp.login(self.sender_email, self.sender_password)
+                smtp.sendmail(self.sender_email, to_email, em.as_string())
+                logger.info(f"[EMAIL SERVICE] ✓ Factura {invoice_number} enviada exitosamente a {to_email}")
+                return True
+                
+        except smtplib.SMTPException as e:
+            logger.error(f"[EMAIL SERVICE] Error SMTP al enviar factura: {str(e)}")
+            return False
+        except Exception as e:
+            logger.error(f"[EMAIL SERVICE] Error inesperado al enviar factura por email: {str(e)}", exc_info=True)
             return False
