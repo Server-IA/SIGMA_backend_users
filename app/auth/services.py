@@ -85,10 +85,12 @@ class AuthService:
     
     def get_user_by_username(self, username: str):
         try:
+            # Normalizar email a minúsculas para comparación case-insensitive
+            normalized_email = username.lower().strip()
             user = (
                 self.db.query(User)
                 .options(joinedload(User.roles).joinedload(Role.permissions))
-                .filter(User.email == username)
+                .filter(User.email == normalized_email)
                 .first()
             )
             if not user:
