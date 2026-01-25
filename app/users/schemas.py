@@ -179,6 +179,11 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
+#Modelo de request para el login SSO-Login para agrofusion
+class SSOLoginRequest(BaseModel):
+    sso_token: str
+
+
 # Modelo para el login de usuario
 class UserLogin(BaseModel):
     email: str

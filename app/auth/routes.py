@@ -5,10 +5,17 @@ from datetime import datetime
 from jose import jwt, JWTError
 from app.database import get_db
 from app.auth.services import AuthService, SECRET_KEY, OAuthService
-from app.auth.schemas import ResetPasswordRequest, ResetPasswordResponse, UpdatePasswordRequest, OAuthLoginRequest, OAuthCallbackRequest, SocialLoginResponse
-from app.users.schemas import UserLogin, Token
+from app.auth.schemas import (
+    ResetPasswordRequest,
+    ResetPasswordResponse,
+    UpdatePasswordRequest,
+    OAuthLoginRequest,
+    OAuthCallbackRequest,
+    SocialLoginResponse
+)
+from app.users.schemas import UserLogin, Token, SSOLoginRequest
 from app.users.services import UserService
-from app.roles.models import Role, Permission 
+from app.roles.models import Role, Permission
 from app.users.models import User
 
 # Auditoría
@@ -253,6 +260,156 @@ def login(user_credentials: UserLogin, request: Request, db: Session = Depends(g
 
         except Exception as e:
             logging.warning(f"No se pudo auditar el intento de login: {e}")
+
+
+
+@router.post("/sso-login", response_model=Token)
+def sso_login(payload: SSOLoginRequest, request: Request, db: Session = Depends(get_db)):
+    auth_service = AuthService(db)
+
+    # Auditoría - defaults
+    result = "failed"
+    reason = "invalid_sso_token"
+    actor_id = None
+    actor_name = None
+    object_id = None
+    username_hint = None
+    status_denied = None
+    actor_role_name = None
+    actor_role_ids = []
+
+    user_lookup = None
+
+    try:
+        # 1️⃣ Verificar token SSO
+        sso_payload = auth_service.verify_sso_token(payload.sso_token)
+        email = sso_payload.get("email")
+
+        if not email:
+            raise HTTPException(status_code=401, detail="Token SSO inválido")
+
+        username_hint = email
+
+        # 2️⃣ Buscar usuario
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Usuario no registrado")
+
+        user_lookup = user
+        object_id = str(user.id)
+        actor_id = object_id
+        actor_name = getattr(user, "name", None)
+
+        # 3️⃣ Validaciones de estado
+        if not user.email_status:
+            result = "denied"
+            reason = "email_not_verified"
+
+            user_service = UserService(db)
+            new_token = user_service.resend_activation_token(user)
+
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "status": "false",
+                    "message": "Cuenta no activada. Se ha reenviado el código de activación.",
+                    "token": new_token,
+                },
+            )
+
+        if user.status_id != 1:
+            result = "denied"
+            reason = "inactive_or_blocked"
+            status_denied = user.status_id
+
+            raise HTTPException(
+                status_code=401,
+                detail="Cuenta inactiva o bloqueada",
+            )
+
+        # 4️⃣ Cargar roles y permisos
+        user = (
+            db.query(User)
+            .options(joinedload(User.roles).joinedload(Role.permissions))
+            .filter(User.id == user.id)
+            .first()
+        )
+
+        roles = []
+        for role in user.roles:
+            role_data = {"id": role.id, "name": role.name}
+            permisos = [{"id": perm.id} for perm in role.permissions]
+            role_data["permisos"] = permisos
+            roles.append(role_data)
+
+        token_data = {
+            "sub": user.email,
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "status_date": datetime.utcnow().isoformat(),
+            "rol": roles,
+            "status": user.status_id,
+            "birthday": user.birthday.isoformat() if user.birthday else None,
+            "first_login_complete": user.first_login_complete,
+        }
+
+        access_token = auth_service.create_access_token(data=token_data)
+
+        actor_role_name, actor_role_ids = pick_primary_role_and_ids(user)
+
+        result = "success"
+        reason = None
+
+        return {"access_token": access_token, "token_type": "bearer"}
+
+    except HTTPException:
+        raise
+
+    finally:
+        try:
+            meta = {"result": result}
+            if reason:
+                meta["reason"] = reason
+            if username_hint:
+                meta["username_hint"] = username_hint
+            if status_denied is not None:
+                meta["status_id"] = status_denied
+
+            ip = None
+            ua = None
+            try:
+                headers = request.headers
+                if headers:
+                    xff = headers.get("x-forwarded-for")
+                    if xff:
+                        ip = xff.split(",")[0].strip()
+                    ua = headers.get("user-agent")
+                if not ip and request.client:
+                    ip = request.client.host
+            except Exception:
+                pass
+
+            AuditClient(request).emit({
+                "operation": "SSO_LOGIN",
+                "actor_id": actor_id or "unknown",
+                "actor_name": actor_name or username_hint or "unknown",
+                "actor_role": actor_role_name or "unknown",
+                "object_id": object_id,
+                "permission_id": None,
+                "module": "users_management",
+                "submodule": "auth",
+                "ip": ip,
+                "user_agent": ua,
+                "diff": {"changed": {}, "created": {}, "removed": {}},
+                "meta": meta,
+                "ts": None,
+            })
+
+        except Exception as e:
+            logging.warning(f"No se pudo auditar el SSO login: {e}")
+
+
 
 @router.post("/logout")
 def logout(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
