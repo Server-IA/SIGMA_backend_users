@@ -9,10 +9,17 @@ from sqlalchemy.orm import Session, joinedload
 from app.roles.models import Role, Permission
 from Crypto.Protocol.KDF import scrypt
 import os
+from pathlib import Path
+
 
 SECRET_KEY =  os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440
+BASE_DIR = Path(__file__).resolve().parent.parent
+SSO_PUBLIC_KEY_PATH = BASE_DIR / "keys" / "sso_public.pem"
+
+with open(SSO_PUBLIC_KEY_PATH, "r") as f:
+    SSO_PUBLIC_KEY = f.read()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
@@ -21,6 +28,25 @@ class AuthService:
 
     def __init__(self, db: Session):
         self.db = db
+
+    def verify_sso_token(self, token: str) -> dict:
+
+        """
+        Autentica un usuario mediante Single Sign-On (SSO).
+
+        Este método valida un token SSO emitido por el sistema de autenticación
+        central (Agrofusion), verifica su firma y claims, y permite iniciar sesión
+        en este sistema sin solicitar credenciales locales.
+        
+        """
+        payload = jwt.decode(
+            token,
+            SSO_PUBLIC_KEY,
+            algorithms=["RS256"],
+            audience="SIGMA",   
+            options={"verify_exp": True},
+        )
+        return payload
 
     def create_access_token(self, data: dict, expires_delta: timedelta = None) -> str:
         """
