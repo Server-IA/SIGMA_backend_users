@@ -32,6 +32,14 @@ def list_roles(
     role_service = services.RoleService(db)
     return role_service.get_roles()
 
+@router.get("/agrofusion")
+def list_roles_agrofusion(
+    db: Session = Depends(get_db),
+):
+    
+    role_service = services.RoleService(db)
+    return role_service.get_roles()
+
 @router.get("/{role_id}")
 def detail_rol(
     role_id: int, 
