@@ -11,7 +11,9 @@ from app.auth.schemas import (
     UpdatePasswordRequest,
     OAuthLoginRequest,
     OAuthCallbackRequest,
-    SocialLoginResponse
+    SocialLoginResponse,
+    ServiceTokenRequest,
+    ServiceTokenResponse
 )
 from app.users.schemas import UserLogin, Token, SSOLoginRequest
 from app.users.services import UserService
@@ -23,7 +25,7 @@ from audit_sdk import AuditClient
 from app.users.audit_helpers import pick_primary_role_and_ids
 import logging
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/swagger-login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/users/auth/swagger-login")
 router = APIRouter(tags=["Auth"])
 
 
@@ -281,7 +283,7 @@ def sso_login(payload: SSOLoginRequest, request: Request, db: Session = Depends(
     user_lookup = None
 
     try:
-        # 1️⃣ Verificar token SSO
+        # 1️ Verificar token SSO
         sso_payload = auth_service.verify_sso_token(payload.sso_token)
         email = sso_payload.get("email")
 
@@ -290,7 +292,7 @@ def sso_login(payload: SSOLoginRequest, request: Request, db: Session = Depends(
 
         username_hint = email
 
-        # 2️⃣ Buscar usuario
+        # 2️ Buscar usuario
         user = db.query(User).filter(User.email == email).first()
         if not user:
             raise HTTPException(status_code=401, detail="Usuario no registrado")
@@ -300,7 +302,7 @@ def sso_login(payload: SSOLoginRequest, request: Request, db: Session = Depends(
         actor_id = object_id
         actor_name = getattr(user, "name", None)
 
-        # 3️⃣ Validaciones de estado
+        # 3️ Validaciones de estado
         if not user.email_status:
             result = "denied"
             reason = "email_not_verified"
@@ -327,7 +329,7 @@ def sso_login(payload: SSOLoginRequest, request: Request, db: Session = Depends(
                 detail="Cuenta inactiva o bloqueada",
             )
 
-        # 4️⃣ Cargar roles y permisos
+        # 4️ Cargar roles y permisos
         user = (
             db.query(User)
             .options(joinedload(User.roles).joinedload(Role.permissions))
@@ -409,6 +411,54 @@ def sso_login(payload: SSOLoginRequest, request: Request, db: Session = Depends(
         except Exception as e:
             logging.warning(f"No se pudo auditar el SSO login: {e}")
 
+
+@router.post("/service-token", response_model=ServiceTokenResponse)
+def service_token(
+    payload: ServiceTokenRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Genera un token JWT para autenticación de servicios (machine-to-machine).
+
+    Flujo:
+    1. Valida las credenciales del servicio (client_id y client_secret)
+       contra las variables de entorno del sistema.
+    2. Si son válidas, genera un token JWT asociado al usuario indicado por email.
+    3. Retorna el access_token en formato Bearer.
+
+    Args:
+        payload (ServiceTokenRequest):
+            Datos enviados por el cliente que solicita el token:
+                - client_id
+                - client_secret
+                - email del usuario a representar
+        db (Session):
+            Sesión de base de datos inyectada por FastAPI.
+
+    Returns:
+        ServiceTokenResponse:
+            {
+                "access_token": "<jwt>",
+                "token_type": "bearer"
+            }
+
+    Raises:
+        HTTPException 401:
+            Si las credenciales del servicio son inválidas.
+    """
+
+    auth_service = AuthService(None)
+
+    service = auth_service.authenticate_service(
+        payload.client_id,
+        payload.client_secret
+    )
+    if not service:
+        raise HTTPException(status_code=401, detail="Credenciales de servicio inválidas")
+
+    token = auth_service.create_service_token(db, email=payload.email)
+
+    return token
 
 
 @router.post("/logout")
