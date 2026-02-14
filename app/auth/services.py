@@ -10,7 +10,9 @@ from app.roles.models import Role, Permission
 from Crypto.Protocol.KDF import scrypt
 import os
 from pathlib import Path
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
+security = HTTPBearer()
 
 SECRET_KEY =  os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
@@ -47,6 +49,115 @@ class AuthService:
             options={"verify_exp": True},
         )
         return payload
+    
+    def authenticate_service(self, client_id: str, client_secret: str):
+        """
+        Valida las credenciales de un cliente de servicio.
+
+        Este método compara el client_id y client_secret recibidos
+        contra los valores configurados en variables de entorno.
+
+        Variables requeridas:
+            SERVICE_CLIENT_ID
+            SERVICE_CLIENT_SECRET
+            SERVICE_CLIENT_SCOPES (opcional, separados por coma)
+
+        Args:
+            client_id (str): Identificador del cliente de servicio.
+            client_secret (str): Secreto del cliente de servicio.
+
+        Returns:
+            dict:
+                Información del cliente autenticado:
+                {
+                    "client_id": str,
+                    "scopes": list[str]
+                }
+
+        Raises:
+            HTTPException 500:
+                Si las variables de entorno no están configuradas.
+
+            HTTPException 401:
+                Si las credenciales son inválidas.
+        """
+        expected_id = os.getenv("SERVICE_CLIENT_ID")
+        expected_secret = os.getenv("SERVICE_CLIENT_SECRET")
+
+        if not expected_id or not expected_secret:
+            raise HTTPException(status_code=500, detail="Service auth no configurado")
+
+        if client_id != expected_id or client_secret != expected_secret:
+            raise HTTPException(status_code=401, detail="Credenciales de servicio inválidas")
+
+        scopes = os.getenv("SERVICE_CLIENT_SCOPES", "")
+        return {
+            "client_id": client_id,
+            "scopes": scopes.split(",") if scopes else []
+        }
+    
+    from datetime import timedelta
+
+    def create_service_token(self, db: Session, email: str):
+        """
+        Genera un JWT de servicio asociado a un usuario del sistema.
+
+        Este token incluye:
+            - Identidad del usuario
+            - Roles
+            - Permisos
+            - Estado del usuario
+            - Fecha de expiración
+
+        Args:
+            db (Session): Sesión activa de base de datos.
+            email (str): Email del usuario que será representado en el token.
+
+        Returns:
+            dict:
+                {
+                    "access_token": str,
+                    "token_type": "bearer"
+                }
+
+        Raises:
+            HTTPException 404:
+                Si el usuario no existe.
+
+            HTTPException 500:
+                Si ocurre un error generando el token.
+        """
+        user = (
+            db.query(User)
+            .options(joinedload(User.roles).joinedload(Role.permissions))
+            .filter(User.email ==  email)
+            .first()
+        )
+
+        roles = []
+        for role in user.roles:
+            role_data = {"id": role.id, "name": role.name}
+            permisos = [{"id": perm.id} for perm in role.permissions]
+            role_data["permisos"] = permisos
+            roles.append(role_data)
+
+        token_data = {
+            "sub": user.email,
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "status_date": datetime.utcnow().isoformat(),
+            "rol": roles,
+            "status": user.status_id,
+            "birthday": user.birthday.isoformat() if user.birthday else None,
+            "first_login_complete": user.first_login_complete,
+        }
+
+        access_token = self.create_access_token(data=token_data)
+        return {"access_token": access_token, "token_type": "bearer"}
+
+
+
 
     def create_access_token(self, data: dict, expires_delta: timedelta = None) -> str:
         """
@@ -149,6 +260,12 @@ class AuthService:
     def authenticate_user(self, email: str, password: str):
         try:
             user = self.get_user_by_username(email)
+            if not user.password_salt or not user.password:
+                raise HTTPException(
+                status_code=401,
+                detail="Este usuario no tiene autenticación por contraseña"
+            )
+
             if not user or not self.verify_password(user.password_salt, user.password, password):
                 raise HTTPException(status_code=401, detail="Credenciales inválidas")
             return user
