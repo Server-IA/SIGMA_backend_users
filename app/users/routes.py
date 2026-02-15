@@ -283,6 +283,53 @@ def create_user_by_admin(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al crear el usuario: {str(e)}")
 
+@router.post("/admin/create-agrofusion", response_model=AdminUserCreateResponse, status_code=status.HTTP_201_CREATED)
+async def create_user_by_admin(
+    user_data: AdminUserCreateRequest, request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    permission_id = 3
+    """
+    Crea un nuevo usuario en el sistema (vía Admin).
+    Campos requeridos:
+      - name, first_last_name, second_last_name,
+      - type_document_id, document_number, date_issuance_document,
+      - birthday, gender_id, roles.
+    """
+    # Verificar permiso o si es administrador (users.create -> ID 3)
+    if not check_permission(current_user, permission_id):
+        raise HTTPException(status_code=403, detail="No tiene permisos para crear usuarios")
+    try:
+        user_service = UserService(db)
+        user = user_service.create_user_by_admin(
+            name=user_data.name,
+            first_last_name=user_data.first_last_name,
+            second_last_name=user_data.second_last_name,
+            type_document_id=user_data.type_document_id,
+            document_number=user_data.document_number,
+            date_issuance_document=user_data.date_issuance_document,
+            birthday=user_data.birthday,
+            gender_id=user_data.gender_id,
+            roles=user_data.roles,
+            admin_id=current_user["id"],
+            request=request,
+            current_user=current_user,
+            permission_id=permission_id
+        )
+        pre_register = await user_service.validate_for_pre_register(document_type_id=user_data.type_document_id, document_number=user_data.document_number, date_issuance_document=user_data.date_issuance_document)
+        complete_pre_register = await user_service.complete_pre_register(token=pre_register.token, email=user_data.email, password=user_data.password)
+        return {
+            "success": True,
+            "message": "Usuario creado y pre-registro completado exitosamente",
+            "user_id": user["user_id"], 
+            "token": complete_pre_register.token
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al crear el usuario: {str(e)}")
+
 
 @router.post("/admin/create-employee", response_model=AdminUserCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_employee(
