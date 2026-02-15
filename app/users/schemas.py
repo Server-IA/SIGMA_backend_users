@@ -23,7 +23,8 @@ class AdminUserCreateRequest(BaseModel):
     birthday: date = Field(..., description="Fecha de nacimiento")
     gender_id: int = Field(..., description="ID del género (1=Hombre, 2=Mujer, 3=Otro)")
     roles: List[int] = Field(..., description="Lista de IDs de roles asignados al usuario")
-    
+    email: Optional[str] = Field(None, description="Correo electrónico del usuario")
+    password: Optional[str] = Field(None, min_length=10, max_length=128, description="Contraseña del usuario (opcional, se genera automáticamente si no se proporciona)")
     @validator('document_number')
     def validate_document_number(cls, v):
         if not v.isdigit():
@@ -143,6 +144,7 @@ class AdminUserCreateResponse(BaseModel):
     success: bool
     message: str
     user_id: Optional[int] = None
+    token: Optional[str] = None
 
 # Modelo base para la solicitud de usuario
 class UserBase(BaseModel):
