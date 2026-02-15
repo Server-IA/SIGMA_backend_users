@@ -1197,7 +1197,7 @@ class UserService:
             # if user.date_issuance_document.date() != date_issuance_document:
             #     ...
             # Si ya recibes datetime, deja como está:
-            if user.date_issuance_document != date_issuance_document:
+            if user.date_issuance_document.date() != date_issuance_document:
                 raise HTTPException(status_code=400, detail="La fecha de expedición no coincide con nuestros registros.")
 
             if user.status_id == 1:
