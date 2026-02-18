@@ -690,6 +690,22 @@ def list_user(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al obtener el usuario: {str(e)}")
 
+@router.get("/get_user_by_email/{email}")
+def get_user_by_email(
+    email: str, 
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """
+    Obtiene información detallada de un usuario.
+    """
+    try:
+        user_service = UserService(db)
+        return user_service.get_user_by_username(email)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al obtener el usuario: {str(e)}")
 
 @router.get("/")
 def list_users(
