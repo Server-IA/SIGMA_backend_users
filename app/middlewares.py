@@ -61,6 +61,7 @@ def setup_middlewares(app):
         allow_origins=[
         os.getenv("FRONTEND_PRUEBAS_URL"),
         os.getenv("FRONTEND_URL"),
+        os.getenv("https://inmero.co/agrofusionTest")
         ],  # Cambiar a dominios específicos en producción
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
